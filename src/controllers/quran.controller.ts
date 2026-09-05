@@ -41,5 +41,36 @@ export const QuranController = {
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
+  },
+    async getDaftarDoa(req: Request, res: Response) {
+    try {
+      // Ambil query parameter ?grup=... atau ?tag=... dari URL
+      const { grup, tag } = req.query;
+      const data = await (EquranService as typeof EquranService & {
+        getDaftarDoa(grup?: string, tag?: string): Promise<any>;
+      }).getDaftarDoa(grup as string, tag as string);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  async getDetailDoa(req: Request, res: Response) {
+    try {
+      const grupParam = req.query.grup;
+const grup = Array.isArray(grupParam) ? grupParam[0] : grupParam;
+    const id = parseInt(String(req.params.id), 10);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ success: false, message: 'ID doa harus berupa angka' });
+      }
+
+      const data = await (EquranService as typeof EquranService & {
+        getDetailDoa(id: number): Promise<any>;
+      }).getDetailDoa(id);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(404).json({ success: false, message: error.message });
+    }
   }
 };
