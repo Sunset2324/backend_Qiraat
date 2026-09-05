@@ -75,21 +75,33 @@ export const EquranService = {
     throw new Error('Gagal mengambil jadwal shalat');
   },
     // 4. Mengambil Daftar Doa & Dzikir (dengan filter opsional)
+   // 4. Mengambil Daftar Doa & Dzikir (dengan filter opsional)
   async getDaftarDoa(grup?: string, tag?: string) {
     const cacheKey = `doa_list_${grup || 'all'}_${tag || 'all'}`;
     const cached = quranCache.get(cacheKey);
     if (cached) return cached;
 
-    // EQuran.id API Doa menggunakan base URL /api/doa (bukan /api/v2)
     const url = new URL('https://equran.id/api/doa');
     if (grup) url.searchParams.append('grup', grup);
     if (tag) url.searchParams.append('tag', tag);
 
     const { data } = await axios.get(url.toString());
     
-    if (data.code === 200) {
-      quranCache.set(cacheKey, data.data);
-      return data.data;
+    // ✅ PERBAIKAN: API Doa menggunakan "status": "success", bukan "code": 200
+    if (data.status === 'success') {
+      // Mapping data agar konsisten dengan format yang diharapkan frontend
+      const mappedData = data.data.map((item: any) => ({
+        id: item.id,
+        judul: item.nama,       // 'nama' di API -> 'judul' di frontend
+        doa: item.ar,           // 'ar' di API -> 'doa' di frontend
+        latin: item.tr,         // 'tr' di API -> 'latin' di frontend
+        arti: item.idn,         // 'idn' di API -> 'arti' di frontend
+        grup: item.grup,
+        tags: item.tag
+      }));
+      
+      quranCache.set(cacheKey, mappedData);
+      return mappedData;
     }
     throw new Error('Gagal mengambil daftar doa');
   },
@@ -102,9 +114,22 @@ export const EquranService = {
 
     const { data } = await axios.get(`https://equran.id/api/doa/${id}`);
     
-    if (data.code === 200) {
-      quranCache.set(cacheKey, data.data);
-      return data.data;
+    // ✅ PERBAIKAN: Cek "status": "success"
+    if (data.status === 'success') {
+      const item = data.data;
+      const mappedData = {
+        id: item.id,
+        judul: item.nama,
+        doa: item.ar,
+        latin: item.tr,
+        arti: item.idn,
+        grup: item.grup,
+        tags: item.tag,
+        tentang: item.tentang // Tambahan info sumber/tentang
+      };
+      
+      quranCache.set(cacheKey, mappedData);
+      return mappedData;
     }
     throw new Error('Doa tidak ditemukan');
   },
