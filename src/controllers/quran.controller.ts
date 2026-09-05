@@ -70,7 +70,9 @@ const grup = Array.isArray(grupParam) ? grupParam[0] : grupParam;
       }).getDetailDoa(id);
       res.json({ success: true, data });
     } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getDaftarDoa:", error.message); 
       res.status(404).json({ success: false, message: error.message });
     }
-  }
+  },
+  
 };
