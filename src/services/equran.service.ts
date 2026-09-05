@@ -74,6 +74,41 @@ export const EquranService = {
     }
     throw new Error('Gagal mengambil jadwal shalat');
   },
+    // 4. Mengambil Daftar Doa & Dzikir (dengan filter opsional)
+  async getDaftarDoa(grup?: string, tag?: string) {
+    const cacheKey = `doa_list_${grup || 'all'}_${tag || 'all'}`;
+    const cached = quranCache.get(cacheKey);
+    if (cached) return cached;
+
+    // EQuran.id API Doa menggunakan base URL /api/doa (bukan /api/v2)
+    const url = new URL('https://equran.id/api/doa');
+    if (grup) url.searchParams.append('grup', grup);
+    if (tag) url.searchParams.append('tag', tag);
+
+    const { data } = await axios.get(url.toString());
+    
+    if (data.code === 200) {
+      quranCache.set(cacheKey, data.data);
+      return data.data;
+    }
+    throw new Error('Gagal mengambil daftar doa');
+  },
+
+  // 5. Mengambil Detail Doa Spesifik berdasarkan ID
+  async getDetailDoa(id: number) {
+    const cacheKey = `doa_detail_${id}`;
+    const cached = quranCache.get(cacheKey);
+    if (cached) return cached;
+
+    const { data } = await axios.get(`https://equran.id/api/doa/${id}`);
+    
+    if (data.code === 200) {
+      quranCache.set(cacheKey, data.data);
+      return data.data;
+    }
+    throw new Error('Doa tidak ditemukan');
+  },
+
         audioFull: raw.audioFull[qariId] || raw.audioFull['05'], // Fallback ke Qari default jika ID salah
         ayat: raw.ayat.map((a: any) => ({
           nomor: a.nomorAyat,
