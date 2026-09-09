@@ -14,21 +14,38 @@ const BASE_URL = process.env.EQURAN_API_BASE_URL || 'https://equran.id/api/v2';
 export const EquranService = {
   
     // 0. Mengambil Daftar Mushaf/Qiraat dari Quranpedia
-    async getMushafList() {
+  async getMushafList() {
     const cacheKey = 'quranpedia_mushafs';
     const cached = quranCache.get(cacheKey);
     if (cached) return cached;
 
     try {
       const { data } = await axios.get('https://api.quranpedia.net/v1/mushafs');
-      console.log('Raw Quranpedia Response:', data); // Untuk debug
       
-      // Mapping data sesuai struktur JSON Quranpedia
-      const mappedData = (data.data || data.mushafs || []).map((item: any) => ({
-        id: item.id || item.slug || item.nama,
-        name: item.name || item.nama,
-        arabic: item.name_arabic || item.arabic_name || item.nama_arab || "",
-        description: item.description || item.deskripsi || `Mushaf ${item.name || item.nama}`
+      // 🔍 DEBUG: Cetak struktur asli ke console/terminal
+      console.log('=== RAW QURANPEDIA RESPONSE ===');
+      console.log(JSON.stringify(data, null, 2)); 
+      console.log('================================');
+
+      // Logika mapping yang lebih fleksibel
+      let rawList = [];
+      
+      // Cek apakah response langsung array, atau dibungkus object
+      if (Array.isArray(data)) {
+        rawList = data;
+      } else if (data && typeof data === 'object') {
+        // Coba cari di key yang umum digunakan API
+        rawList = data.data || data.mushafs || data.result || data.items || [];
+      }
+
+      console.log(`Ditemukan ${rawList.length} item mentah.`);
+
+      const mappedData = rawList.map((item: any) => ({
+        // Gunakan field yang paling mungkin ada
+        id: String(item.id || item.slug || item.kode || Math.random().toString(36)), 
+        name: item.name || item.nama || item.title || 'Mushaf Tidak Dikenal',
+        arabic: item.name_arabic || item.arabic_name || item.nama_arab || item.arab || "",
+        description: item.description || item.deskripsi || item.info || `Mushaf ${item.name || item.nama}`
       }));
 
       quranCache.set(cacheKey, mappedData);
