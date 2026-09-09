@@ -8,5 +8,6 @@ router.get('/surat/:nomor', QuranController.getSurahDetail);
 router.post('/shalat', QuranController.getJadwalShalat);
 router.get('/doa', QuranController.getDaftarDoa);
 router.get('/doa/:id', QuranController.getDetailDoa);
+router.get('/mushafs', QuranController.getMushafList);
 
 export default router;

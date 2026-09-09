@@ -13,6 +13,32 @@ const BASE_URL = process.env.EQURAN_API_BASE_URL || 'https://equran.id/api/v2';
 
 export const EquranService = {
   
+    // 0. Mengambil Daftar Mushaf/Qiraat dari Quranpedia
+    async getMushafList() {
+    const cacheKey = 'quranpedia_mushafs';
+    const cached = quranCache.get(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const { data } = await axios.get('https://api.quranpedia.net/v1/mushafs');
+      console.log('Raw Quranpedia Response:', data); // Untuk debug
+      
+      // Mapping data sesuai struktur JSON Quranpedia
+      const mappedData = (data.data || data.mushafs || []).map((item: any) => ({
+        id: item.id || item.slug || item.nama,
+        name: item.name || item.nama,
+        arabic: item.name_arabic || item.arabic_name || item.nama_arab || "",
+        description: item.description || item.deskripsi || `Mushaf ${item.name || item.nama}`
+      }));
+
+      quranCache.set(cacheKey, mappedData);
+      return mappedData;
+    } catch (error: any) {
+      console.error('Gagal mengambil data mushaf:', error.message);
+      throw new Error('Gagal memuat daftar mushaf');
+    }
+  },
+  
   // 1. Mengambil Daftar Semua Surah
   async getAllSurah() {
     const cacheKey = 'all_surah';
