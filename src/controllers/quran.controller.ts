@@ -75,13 +75,13 @@ const grup = Array.isArray(grupParam) ? grupParam[0] : grupParam;
     }
   },
 
-    async getMushafList(req: Request, res: Response) {
+  async getMushafList(req: Request, res: Response) {
     try {
       const data = await EquranService.getMushafList();
       res.json({ success: true, data });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
-  },
+  }
   
 };
