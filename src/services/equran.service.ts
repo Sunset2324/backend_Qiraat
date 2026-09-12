@@ -311,5 +311,54 @@ export const EquranService = {
       return mappedData;
     }
     throw new Error('Doa tidak ditemukan');
+  },
+
+    // 6. Mengambil Detail Surah: ARAB dari Quranpedia + TERJEMAHAN/TAFSIR dari EQuran.id
+  async getSurahDetailMerged(nomor: number, mushafId: string) {
+    try {
+      // 1. Ambil Teks Arab dari Quranpedia
+      // Catatan: Sesuaikan endpoint ini dengan dokumentasi resmi Quranpedia jika berbeda
+      const quranpediaRes = await axios.get(`https://api.quranpedia.net/v1/quran/${mushafId}/${nomor}`);
+      const arabicData = quranpediaRes.data.data || quranpediaRes.data.ayat || [];
+
+      // 2. Ambil Terjemahan & Tafsir dari EQuran.id (Default Hafs, tapi terjemahannya universal)
+      const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`);
+      const translationData = equranRes.data.code === 200 ? equranRes.data.data.ayat : [];
+
+      // 3. Gabungkan (Merge) kedua data berdasarkan nomor ayat
+      const mergedAyat = arabicData.map((ayatArab: any, index: number) => {
+        const ayatTerjemahan = translationData[index] || {};
+        
+        return {
+          nomor: ayatArab.nomorAyat || (index + 1),
+          teksArab: ayatArab.teksArab || ayatArab.text || ayatArab.arab, // Ambil dari Quranpedia
+          teksLatin: ayatTerjemahan.teksLatin || '', // Opsional, jika Quranpedia tidak ada latin
+          teksIndonesia: ayatTerjemahan.teksIndonesia || ayatTerjemahan.arti || 'Terjemahan tidak tersedia', // Ambil dari EQuran
+          tafsir: ayatTerjemahan.tafsir || '', // Ambil dari EQuran (jika ada)
+          // Audio bisa tetap diambil dari EQuran.id berdasarkan qari default (misal '05')
+          audio: ayatTerjemahan.audio ? (ayatTerjemahan.audio['05'] || Object.values(ayatTerjemahan.audio)[0]) : ''
+        };
+      });
+
+      // Ambil info surah dari EQuran (karena nama latin/arti lebih lengkap di sana)
+      const infoSurah = equranRes.data.code === 200 ? equranRes.data.data.info : {};
+
+      return {
+        info: {
+          nomor: infoSurah.nomor || nomor,
+          nama: infoSurah.nama,
+          namaLatin: infoSurah.namaLatin,
+          arti: infoSurah.arti,
+          jumlahAyat: infoSurah.jumlahAyat || mergedAyat.length,
+          tempatTurun: infoSurah.tempatTurun,
+          mushafAktif: mushafId // Kirim balik ID mushaf ke frontend
+        },
+        ayat: mergedAyat
+      };
+
+    } catch (error: any) {
+      console.error('Gagal mengambil data merged:', error.message);
+      throw new Error('Gagal memuat detail surah dari sumber gabungan');
+    }
   }
 };

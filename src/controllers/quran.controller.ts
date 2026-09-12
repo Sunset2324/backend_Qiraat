@@ -22,11 +22,11 @@ export const QuranController = {
       res.status(404).json({ success: false, message: error.message });
     }
   },
-    async getJadwalShalat(req: Request, res: Response) {
+
+  async getJadwalShalat(req: Request, res: Response) {
     try {
       const { provinsi, kabkota, bulan, tahun } = req.body;
       
-      // Validasi input sederhana
       if (!provinsi || !kabkota || !bulan) {
         return res.status(400).json({ 
           success: false, 
@@ -34,21 +34,23 @@ export const QuranController = {
         });
       }
 
-      const data = await (EquranService as typeof EquranService & {
-        getJadwalShalat(provinsi: string, kabkota: string, bulan: string, tahun?: string): Promise<any>;
-      }).getJadwalShalat(provinsi, kabkota, bulan, tahun);
+      const data = await EquranService.getJadwalShalat(
+        provinsi, 
+        kabkota, 
+        parseInt(String(bulan), 10), 
+        tahun ? parseInt(String(tahun), 10) : new Date().getFullYear()
+      );
+      
       res.json({ success: true, data });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
   },
-    async getDaftarDoa(req: Request, res: Response) {
+
+  async getDaftarDoa(req: Request, res: Response) {
     try {
-      // Ambil query parameter ?grup=... atau ?tag=... dari URL
       const { grup, tag } = req.query;
-      const data = await (EquranService as typeof EquranService & {
-        getDaftarDoa(grup?: string, tag?: string): Promise<any>;
-      }).getDaftarDoa(grup as string, tag as string);
+      const data = await EquranService.getDaftarDoa(grup as string, tag as string);
       res.json({ success: true, data });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
@@ -57,20 +59,18 @@ export const QuranController = {
 
   async getDetailDoa(req: Request, res: Response) {
     try {
-      const grupParam = req.query.grup;
-const grup = Array.isArray(grupParam) ? grupParam[0] : grupParam;
-    const id = parseInt(String(req.params.id), 10);
+      // ✅ DIPERBAIKI: Menghapus sisa kode 'grup' yang tidak relevan di sini
+      const id = parseInt(String(req.params.id), 10);
       
       if (isNaN(id)) {
         return res.status(400).json({ success: false, message: 'ID doa harus berupa angka' });
       }
 
-      const data = await (EquranService as typeof EquranService & {
-        getDetailDoa(id: number): Promise<any>;
-      }).getDetailDoa(id);
+      const data = await EquranService.getDetailDoa(id);
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getDaftarDoa:", error.message); 
+      // ✅ DIPERBAIKI: Nama log error disesuaikan
+      console.error("🔥 BACKEND ERROR getDetailDoa:", error.message); 
       res.status(404).json({ success: false, message: error.message });
     }
   },
@@ -80,8 +80,9 @@ const grup = Array.isArray(grupParam) ? grupParam[0] : grupParam;
       const data = await EquranService.getMushafList();
       res.json({ success: true, data });
     } catch (error: any) {
+      // ✅ DITAMBAHKAN: Log error untuk memudahkan debugging jika 404/500 masih muncul
+      console.error("🔥 BACKEND ERROR getMushafList:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
-  }
-  
+  },
 };
