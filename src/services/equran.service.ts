@@ -13,40 +13,171 @@ const BASE_URL = process.env.EQURAN_API_BASE_URL || 'https://equran.id/api/v2';
 
 export const EquranService = {
   
-    // 0. Mengambil Daftar Mushaf/Qiraat dari Quranpedia
+  // 0. Mengambil Daftar Mushaf/Qiraat dari Quranpedia + TERJEMAHAN LENGKAP
   async getMushafList() {
-    const cacheKey = 'quranpedia_mushafs';
+    const cacheKey = 'quranpedia_mushafs_translated_v2';
     const cached = quranCache.get(cacheKey);
     if (cached) return cached;
 
     try {
       const { data } = await axios.get('https://api.quranpedia.net/v1/mushafs');
       
-      // 🔍 DEBUG: Cetak struktur asli ke console/terminal
-      console.log('=== RAW QURANPEDIA RESPONSE ===');
-      console.log(JSON.stringify(data, null, 2)); 
-      console.log('================================');
-
-      // Logika mapping yang lebih fleksibel
+      // Ambil data mentah
       let rawList = [];
-      
-      // Cek apakah response langsung array, atau dibungkus object
       if (Array.isArray(data)) {
         rawList = data;
       } else if (data && typeof data === 'object') {
-        // Coba cari di key yang umum digunakan API
-        rawList = data.data || data.mushafs || data.result || data.items || [];
+        rawList = data.data || data.mushafs || data.result || [];
       }
 
-      console.log(`Ditemukan ${rawList.length} item mentah.`);
+      // ============================================
+      // KAMUS TERJEMAHAN MUSHAF (ARAB → INDONESIA)
+      // ============================================
+      const translateMushaf = (arabicName: string, arabicDesc: string) => {
+        const name = arabicName || '';
+        const desc = arabicDesc || '';
 
-      const mappedData = rawList.map((item: any) => ({
-        // Gunakan field yang paling mungkin ada
-        id: String(item.id || item.slug || item.kode || Math.random().toString(36)), 
-        name: item.name || item.nama || item.title || 'Mushaf Tidak Dikenal',
-        arabic: item.name_arabic || item.arabic_name || item.nama_arab || item.arab || "",
-        description: item.description || item.deskripsi || item.info || `Mushaf ${item.name || item.nama}`
-      }));
+        // 1. Mushaf Hafs Standar (Mushaf Madinah)
+        if (name.includes('مصحف حفص') && !name.includes('نسخة') && !name.includes('نستعليق')) {
+          return { 
+            name: "Mushaf Hafs (Standar Madinah)", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Hafs dari 'Asim. Ini adalah mushaf yang paling umum digunakan di Indonesia, Timur Tengah, dan mayoritas dunia Islam." 
+          };
+        }
+
+        // 2. Mushaf Hafs Versi Naskhi
+        if (name.includes('حفص') && name.includes('نسخة')) {
+          return { 
+            name: "Mushaf Hafs Versi Naskhi", 
+            desc: "Mushaf Al-Qur'an riwayat Hafs dari 'Asim yang ditulis dengan kaligrafi Naskhi. Gaya tulisan ini jelas dan mudah dibaca." 
+          };
+        }
+
+        // 3. Mushaf Hafs Versi Nastaliq
+        if (name.includes('حفص') && name.includes('نستعليق')) {
+          return { 
+            name: "Mushaf Hafs Versi Nastaliq", 
+            desc: "Mushaf Al-Qur'an riwayat Hafs dari 'Asim yang ditulis dengan kaligrafi Nastaliq. Umum digunakan di Pakistan, India, dan Asia Selatan." 
+          };
+        }
+
+        // 4. Mushaf Warsh
+        if (name.includes('ورش')) {
+          return { 
+            name: "Mushaf Warsh (Warsh 'an Nafi')", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Warsh dari Imam Nafi'. Banyak digunakan di negara-negara Afrika Utara seperti Maroko, Aljazair, dan Tunisia." 
+          };
+        }
+
+        // 5. Mushaf Qalun
+        if (name.includes('قالون')) {
+          return { 
+            name: "Mushaf Qalun (Qalun 'an Nafi')", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Qalun dari Imam Nafi'. Digunakan di Libya dan Tunisia. Saudara dari riwayat Warsh." 
+          };
+        }
+
+        // 6. Mushaf Al-Duri
+        if (name.includes('الدوري') || name.includes('دوري')) {
+          return { 
+            name: "Mushaf Ad-Duri (Ad-Duri 'an Abu 'Amr)", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Ad-Duri dari Imam Abu 'Amr. Banyak digunakan di negara-negara Afrika seperti Sudan, Chad, dan Nigeria." 
+          };
+        }
+
+        // 7. Mushaf As-Susi
+        if (name.includes('السوسي') || name.includes('سوسي')) {
+          return { 
+            name: "Mushaf As-Susi (As-Susi 'an Abu 'Amr)", 
+            desc: "Mushaf Al-Qur'an dengan riwayat As-Susi dari Imam Abu 'Amr. Digunakan di wilayah Somalia dan sebagian Yaman." 
+          };
+        }
+
+        // 8. Mushaf Syu'bah
+        if (name.includes('شعبة') || name.includes('شعبه')) {
+          return { 
+            name: "Mushaf Syu'bah (Syu'bah 'an 'Asim)", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Syu'bah dari Imam 'Asim. Saudara dari riwayat Hafs, banyak dibaca di Yaman." 
+          };
+        }
+
+        // 9. Mushaf Khalaf
+        if (name.includes('خلف')) {
+          return { 
+            name: "Mushaf Khalaf (Khalaf 'an Hamzah)", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Khalaf dari Imam Hamzah. Salah satu dari 10 Qiraat Mutawatir." 
+          };
+        }
+
+        // 10. Mushaf Khallad
+        if (name.includes('خلاد')) {
+          return { 
+            name: "Mushaf Khallad (Khallad 'an Hamzah)", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Khallad dari Imam Hamzah. Saudara dari riwayat Khalaf." 
+          };
+        }
+
+        // 11. Mushaf Ibn Kathir
+        if (name.includes('ابن كثير')) {
+          return { 
+            name: "Mushaf Ibn Kathir", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Ibn Kathir dari Makkah. Salah satu dari 7 Qiraat Mutawatir." 
+          };
+        }
+
+        // 12. Mushaf Ibn 'Amir
+        if (name.includes('ابن عامر')) {
+          return { 
+            name: "Mushaf Ibn 'Amir", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Ibn 'Amir dari Syam (Suriah). Salah satu dari 7 Qiraat Mutawatir." 
+          };
+        }
+
+        // 13. Mushaf Abu Ja'far
+        if (name.includes('ابو جعفر') || name.includes('أبو جعفر')) {
+          return { 
+            name: "Mushaf Abu Ja'far", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Abu Ja'far. Salah satu dari 3 Qiraat tambahan yang diakui." 
+          };
+        }
+
+        // 14. Mushaf Ya'qub
+        if (name.includes('يعقوب')) {
+          return { 
+            name: "Mushaf Ya'qub", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Ya'qub al-Hadhrami. Salah satu dari 10 Qiraat Mutawatir." 
+          };
+        }
+
+        // 15. Mushaf Isma'il
+        if (name.includes('إسماعيل') || name.includes('اسماعيل')) {
+          return { 
+            name: "Mushaf Isma'il", 
+            desc: "Mushaf Al-Qur'an dengan riwayat Isma'il ibn Ja'far. Salah satu dari Qiraat Mutawatir." 
+          };
+        }
+
+        // Fallback: Jika tidak ada di kamus, gunakan nama Arab asli + terjemahan generik
+        return { 
+          name: name, 
+          desc: desc || "Mushaf Al-Qur'an dengan riwayat yang diakui dalam tradisi Islam." 
+        };
+      };
+
+      // Mapping data dengan menerjemahkan nama dan deskripsi
+      const mappedData = rawList.map((item: any) => {
+        const arabicName = item.name || item.nama || '';
+        const arabicDesc = item.description || item.deskripsi || item.arabic_desc || '';
+        
+        const translation = translateMushaf(arabicName, arabicDesc);
+        
+        return {
+          id: String(item.id || item.slug || item.kode || Math.random().toString(36)), 
+          name: translation.name, // Nama dalam bahasa Indonesia
+          arabic: arabicName, // Nama asli dalam bahasa Arab (untuk referensi)
+          description: translation.desc // Deskripsi dalam bahasa Indonesia
+        };
+      });
 
       quranCache.set(cacheKey, mappedData);
       return mappedData;
@@ -82,7 +213,6 @@ export const EquranService = {
     if (data.code === 200) {
       const raw = data.data;
       
-      // Mengolah data agar lebih ringan untuk dikirim ke React Native
       const processed = {
         info: {
           nomor: raw.nomor,
@@ -139,14 +269,13 @@ export const EquranService = {
 
     const { data } = await axios.get(url.toString());
     
-    // API Doa menggunakan "status": "success", bukan "code": 200
     if (data.status === 'success') {
       const mappedData = data.data.map((item: any) => ({
         id: item.id,
-        judul: item.nama,       // 'nama' di API -> 'judul' di frontend
-        doa: item.ar,           // 'ar' di API -> 'doa' di frontend
-        latin: item.tr,         // 'tr' di API -> 'latin' di frontend
-        arti: item.idn,         // 'idn' di API -> 'arti' di frontend
+        judul: item.nama,
+        doa: item.ar,
+        latin: item.tr,
+        arti: item.idn,
         grup: item.grup,
         tags: item.tag
       }));
