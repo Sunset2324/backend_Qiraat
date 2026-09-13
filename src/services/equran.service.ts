@@ -313,25 +313,49 @@ export const EquranService = {
     throw new Error('Doa tidak ditemukan');
   },
 
-    // 7. Mengambil Detail Surah: ARAB dari Quranpedia + TERJEMAHAN dari EQuran.id
+    // 6. Mengambil Detail Surah: ARAB dari Quranpedia + TERJEMAHAN dari EQuran.id (Dengan Fallback Aman)
   async getSurahDetailMerged(nomor: number, mushafId: string, qariId: string = '05') {
     try {
-      // 1. Ambil Teks Arab dari Quranpedia
-      const quranpediaRes = await axios.get(`https://api.quranpedia.net/v1/quran/${mushafId}/${nomor}`);
-      const arabicData = quranpediaRes.data.data || quranpediaRes.data.ayat || [];
+      console.log(`[MERGED] Fetching surah ${nomor} | Mushaf: ${mushafId} | Qari: ${qariId}`);
+      
+      let arabicData = [];
+      let mushafAktifName = 'HAFS (Fallback)';
 
-      // 2. Ambil Terjemahan & Audio dari EQuran.id
+      // 1. Coba ambil Teks Arab dari Quranpedia
+      try {
+        const quranpediaRes = await axios.get(`https://api.quranpedia.net/v1/quran/${mushafId}/${nomor}`);
+        
+        // Cek struktur data secara defensif
+        if (quranpediaRes.data && Array.isArray(quranpediaRes.data.data)) {
+          arabicData = quranpediaRes.data.data;
+          mushafAktifName = mushafId.toUpperCase();
+        } else if (quranpediaRes.data && Array.isArray(quranpediaRes.data.ayat)) {
+          arabicData = quranpediaRes.data.ayat;
+          mushafAktifName = mushafId.toUpperCase();
+        } else {
+          console.warn('[MERGED] Format data Quranpedia tidak dikenali. Menggunakan fallback EQuran.id');
+        }
+      } catch (qpError: any) {
+        console.warn(`[MERGED] Gagal ambil dari Quranpedia: ${qpError.message}. Menggunakan fallback EQuran.id`);
+      }
+
+      // 2. Ambil Terjemahan & Audio dari EQuran.id (Ini adalah fallback utama yang pasti berhasil)
       const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`);
-      const translationData = equranRes.data.code === 200 ? equranRes.data.data.ayat : [];
-      const infoSurah = equranRes.data.code === 200 ? equranRes.data.data.info : {};
+      if (equranRes.data.code !== 200) {
+        throw new Error('Gagal mengambil data dasar dari EQuran.id');
+      }
 
-      // 3. Gabungkan (Merge) berdasarkan urutan ayat
-      const mergedAyat = arabicData.map((ayatArab: any, index: number) => {
-        const ayatTerjemahan = translationData[index] || {};
+      const translationData = equranRes.data.data.ayat || [];
+      const infoSurah = equranRes.data.data.info || {};
+
+      // 3. Gabungkan dengan aman
+      const mergedAyat = translationData.map((ayatTerjemahan: any, index: number) => {
+        const ayatArab = arabicData[index] || {}; // Jika Quranpedia gagal, ini akan kosong
         
         return {
-          nomor: ayatArab.nomorAyat || (index + 1),
-          teksArab: ayatArab.teksArab || ayatArab.text || ayatArab.arab || '',
+          nomor: ayatTerjemahan.nomor || (index + 1),
+          // Prioritas: Teks Arab Quranpedia -> Teks Arab EQuran.id -> String kosong
+          teksArab: ayatArab.teksArab || ayatArab.text || ayatArab.arab || ayatTerjemahan.teksArab || '',
           teksLatin: ayatTerjemahan.teksLatin || '',
           teksIndonesia: ayatTerjemahan.teksIndonesia || ayatTerjemahan.arti || 'Terjemahan tidak tersedia',
           audio: ayatTerjemahan.audio ? (ayatTerjemahan.audio[qariId] || Object.values(ayatTerjemahan.audio)[0]) : ''
@@ -346,13 +370,13 @@ export const EquranService = {
           arti: infoSurah.arti,
           jumlahAyat: infoSurah.jumlahAyat || mergedAyat.length,
           tempatTurun: infoSurah.tempatTurun,
-          mushafAktif: mushafId
+          mushafAktif: mushafAktifName
         },
         ayat: mergedAyat
       };
     } catch (error: any) {
-      console.error('Gagal mengambil data merged:', error.message);
-      throw new Error('Gagal memuat detail surah dari sumber gabungan');
+      console.error('🔥 CRITICAL ERROR in getSurahDetailMerged:', error.message);
+      throw new Error('Gagal memuat detail surah');
     }
   }
 };
