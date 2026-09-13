@@ -75,14 +75,14 @@ export const QuranController = {
     }
   },
 
-  async getMushafList(req: Request, res: Response) {
+    async getMushafList(req: Request, res: Response) {
     try {
       const data = await EquranService.getMushafList();
       res.json({ success: true, data });
     } catch (error: any) {
-      // ✅ DITAMBAHKAN: Log error untuk memudahkan debugging jika 404/500 masih muncul
       console.error("🔥 BACKEND ERROR getMushafList:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
-  },
+  }
+  
 };
