@@ -17,4 +17,6 @@ router.get('/doa/:id', QuranController.getDetailDoa);
 // ✅ PASTIKAN BARIS INI ADA DI SINI (Paling Penting!)
 router.get('/mushafs', QuranController.getMushafList);
 
+router.get('/surat-merged/:nomor', QuranController.getSurahDetailMerged);
+
 export default router;

@@ -83,6 +83,20 @@ export const QuranController = {
       console.error("🔥 BACKEND ERROR getMushafList:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
-  }
+  },
+
+    async getSurahDetailMerged(req: Request, res: Response) {
+    try {
+      const nomor = parseInt(String(req.params.nomor), 10);
+      const mushafId = (req.query.mushafId as string) || 'hafs';
+      const qariId = (req.query.qariId as string) || '05';
+      
+      const data = await EquranService.getSurahDetailMerged(nomor, mushafId, qariId);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getSurahDetailMerged:", error.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
   
 };
