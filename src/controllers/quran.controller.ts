@@ -2,15 +2,19 @@ import { Request, Response } from 'express';
 import { EquranService } from '../services/equran.service';
 
 export const QuranController = {
+  
+  // 1. Daftar Semua Surah
   async getAllSurah(req: Request, res: Response) {
     try {
       const data = await EquranService.getAllSurah();
       res.json({ success: true, data });
     } catch (error: any) {
+      console.error(" BACKEND ERROR getAllSurah:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
   },
 
+  // 2. Detail Surah (Default Hafs)
   async getSurahDetail(req: Request, res: Response) {
     try {
       const nomor = parseInt(String(req.params.nomor), 10);
@@ -19,10 +23,27 @@ export const QuranController = {
       const data = await EquranService.getSurahDetail(nomor, qari);
       res.json({ success: true, data });
     } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getSurahDetail:", error.message);
       res.status(404).json({ success: false, message: error.message });
     }
   },
 
+  // 3. Detail Surah Merged (Arab Quranpedia + Terjemahan EQuran)
+  async getSurahDetailMerged(req: Request, res: Response) {
+    try {
+      const nomor = parseInt(String(req.params.nomor), 10);
+      const mushafId = (req.query.mushafId as string) || 'hafs';
+      const qariId = (req.query.qariId as string) || '05';
+      
+      const data = await EquranService.getSurahDetailMerged(nomor, mushafId, qariId);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getSurahDetailMerged:", error.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // 4. Jadwal Shalat
   async getJadwalShalat(req: Request, res: Response) {
     try {
       const { provinsi, kabkota, bulan, tahun } = req.body;
@@ -40,26 +61,28 @@ export const QuranController = {
         parseInt(String(bulan), 10), 
         tahun ? parseInt(String(tahun), 10) : new Date().getFullYear()
       );
-      
       res.json({ success: true, data });
     } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getJadwalShalat:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
   },
 
+  // 5. Daftar Doa
   async getDaftarDoa(req: Request, res: Response) {
     try {
       const { grup, tag } = req.query;
       const data = await EquranService.getDaftarDoa(grup as string, tag as string);
       res.json({ success: true, data });
     } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getDaftarDoa:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
   },
 
+  // 6. Detail Doa
   async getDetailDoa(req: Request, res: Response) {
     try {
-      // ✅ DIPERBAIKI: Menghapus sisa kode 'grup' yang tidak relevan di sini
       const id = parseInt(String(req.params.id), 10);
       
       if (isNaN(id)) {
@@ -69,13 +92,13 @@ export const QuranController = {
       const data = await EquranService.getDetailDoa(id);
       res.json({ success: true, data });
     } catch (error: any) {
-      // ✅ DIPERBAIKI: Nama log error disesuaikan
-      console.error("🔥 BACKEND ERROR getDetailDoa:", error.message); 
+      console.error("🔥 BACKEND ERROR getDetailDoa:", error.message);
       res.status(404).json({ success: false, message: error.message });
     }
   },
 
-    async getMushafList(req: Request, res: Response) {
+  // 7. Daftar Mushaf/Qiraat (Dari Quranpedia + Terjemahan)
+  async getMushafList(req: Request, res: Response) {
     try {
       const data = await EquranService.getMushafList();
       res.json({ success: true, data });
@@ -83,20 +106,5 @@ export const QuranController = {
       console.error("🔥 BACKEND ERROR getMushafList:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
-  },
-
-    async getSurahDetailMerged(req: Request, res: Response) {
-    try {
-      const nomor = parseInt(String(req.params.nomor), 10);
-      const mushafId = (req.query.mushafId as string) || 'hafs';
-      const qariId = (req.query.qariId as string) || '05';
-      
-      const data = await EquranService.getSurahDetailMerged(nomor, mushafId, qariId);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getSurahDetailMerged:", error.message);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  },
-  
+  }
 };

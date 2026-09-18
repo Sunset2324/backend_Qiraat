@@ -3,20 +3,31 @@ import { QuranController } from '../controllers/quran.controller';
 
 const router = Router();
 
-// Route untuk Surah
+// ============================================
+// ROUTE SURAH
+// ============================================
 router.get('/surat', QuranController.getAllSurah);
 router.get('/surat/:nomor', QuranController.getSurahDetail);
 
-// Route untuk Jadwal Shalat
-router.post('/shalat', QuranController.getJadwalShalat);
+// ============================================
+// ROUTE SURAH MERGED (Arab Quranpedia + Terjemahan EQuran)
+// ============================================
+router.get('/surat-merged/:nomor', QuranController.getSurahDetailMerged);
 
-// Route untuk Doa & Dzikir
-router.get('/doa', QuranController.getDaftarDoa);
-router.get('/doa/:id', QuranController.getDetailDoa);
-
-// ✅ PASTIKAN BARIS INI ADA DI SINI (Paling Penting!)
+// ============================================
+// ROUTE MUSHAF/QIRAAT (Dari Quranpedia)
+// ============================================
 router.get('/mushafs', QuranController.getMushafList);
 
-router.get('/surat-merged/:nomor', QuranController.getSurahDetailMerged);
+// ============================================
+// ROUTE JADWAL SHALAT
+// ============================================
+router.post('/shalat', QuranController.getJadwalShalat);
+
+// ============================================
+// ROUTE DOA & DZIKIR
+// ============================================
+router.get('/doa', QuranController.getDaftarDoa);
+router.get('/doa/:id', QuranController.getDetailDoa);
 
 export default router;
