@@ -36,125 +36,62 @@ export const EquranService = {
         const name = arabicName || '';
 
         if (name.includes('مصحف حفص') && !name.includes('نسخة') && !name.includes('نستعليق')) {
-          return { 
-            name: "Mushaf Hafs (Standar Madinah)", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Hafs dari 'Asim. Ini adalah mushaf yang paling umum digunakan di Indonesia, Timur Tengah, dan mayoritas dunia Islam." 
-          };
+          return { name: "Mushaf Hafs (Standar Madinah)", desc: "Mushaf Al-Qur'an dengan riwayat Hafs dari 'Asim. Ini adalah mushaf yang paling umum digunakan di Indonesia, Timur Tengah, dan mayoritas dunia Islam." };
         }
         if (name.includes('حفص') && name.includes('نسخة') && !name.includes('نستعليق')) {
-          return { 
-            name: "Mushaf Hafs Versi Naskhi", 
-            desc: "Mushaf Al-Qur'an riwayat Hafs dari 'Asim yang ditulis dengan kaligrafi Naskhi. Gaya tulisan ini jelas dan mudah dibaca." 
-          };
+          return { name: "Mushaf Hafs Versi Naskhi", desc: "Mushaf Al-Qur'an riwayat Hafs dari 'Asim yang ditulis dengan kaligrafi Naskhi. Gaya tulisan ini jelas dan mudah dibaca." };
         }
         if (name.includes('حفص') && name.includes('نستعليق')) {
-          return { 
-            name: "Mushaf Hafs Versi Nastaliq", 
-            desc: "Mushaf Al-Qur'an riwayat Hafs dari 'Asim yang ditulis dengan kaligrafi Nastaliq. Umum digunakan di Pakistan, India, dan Asia Selatan." 
-          };
+          return { name: "Mushaf Hafs Versi Nastaliq", desc: "Mushaf Al-Qur'an riwayat Hafs dari 'Asim yang ditulis dengan kaligrafi Nastaliq. Umum digunakan di Pakistan, India, dan Asia Selatan." };
         }
         if (name.includes('ورش')) {
-          return { 
-            name: "Mushaf Warsh (Warsh 'an Nafi')", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Warsh dari Imam Nafi'. Banyak digunakan di negara-negara Afrika Utara seperti Maroko, Aljazair, dan Tunisia." 
-          };
+          return { name: "Mushaf Warsh (Warsh 'an Nafi')", desc: "Mushaf Al-Qur'an dengan riwayat Warsh dari Imam Nafi'. Banyak digunakan di negara-negara Afrika Utara seperti Maroko, Aljazair, dan Tunisia." };
         }
         if (name.includes('قالون')) {
-          return { 
-            name: "Mushaf Qalun (Qalun 'an Nafi')", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Qalun dari Imam Nafi'. Digunakan di Libya dan Tunisia. Saudara dari riwayat Warsh." 
-          };
+          return { name: "Mushaf Qalun (Qalun 'an Nafi')", desc: "Mushaf Al-Qur'an dengan riwayat Qalun dari Imam Nafi'. Digunakan di Libya dan Tunisia. Saudara dari riwayat Warsh." };
         }
         if (name.includes('الدوري') || name.includes('دوري')) {
-          return { 
-            name: "Mushaf Ad-Duri (Ad-Duri 'an Abu 'Amr)", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Ad-Duri dari Imam Abu 'Amr. Banyak digunakan di negara-negara Afrika seperti Sudan, Chad, dan Nigeria." 
-          };
+          return { name: "Mushaf Ad-Duri (Ad-Duri 'an Abu 'Amr)", desc: "Mushaf Al-Qur'an dengan riwayat Ad-Duri dari Imam Abu 'Amr. Banyak digunakan di negara-negara Afrika seperti Sudan, Chad, dan Nigeria." };
         }
         if (name.includes('السوسي') || name.includes('سوسي')) {
-          return { 
-            name: "Mushaf As-Susi (As-Susi 'an Abu 'Amr)", 
-            desc: "Mushaf Al-Qur'an dengan riwayat As-Susi dari Imam Abu 'Amr. Digunakan di wilayah Somalia dan sebagian Yaman." 
-          };
+          return { name: "Mushaf As-Susi (As-Susi 'an Abu 'Amr)", desc: "Mushaf Al-Qur'an dengan riwayat As-Susi dari Imam Abu 'Amr. Digunakan di wilayah Somalia dan sebagian Yaman." };
         }
         if (name.includes('شعبة') || name.includes('شعبه')) {
-          return { 
-            name: "Mushaf Syu'bah (Syu'bah 'an 'Asim)", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Syu'bah dari Imam 'Asim. Saudara dari riwayat Hafs, banyak dibaca di Yaman." 
-          };
+          return { name: "Mushaf Syu'bah (Syu'bah 'an 'Asim)", desc: "Mushaf Al-Qur'an dengan riwayat Syu'bah dari Imam 'Asim. Saudara dari riwayat Hafs, banyak dibaca di Yaman." };
         }
         if (name.includes('خلف')) {
-          return { 
-            name: "Mushaf Khalaf (Khalaf 'an Hamzah)", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Khalaf dari Imam Hamzah. Salah satu dari 10 Qiraat Mutawatir." 
-          };
+          return { name: "Mushaf Khalaf (Khalaf 'an Hamzah)", desc: "Mushaf Al-Qur'an dengan riwayat Khalaf dari Imam Hamzah. Salah satu dari 10 Qiraat Mutawatir." };
         }
         if (name.includes('خلاد')) {
-          return { 
-            name: "Mushaf Khallad (Khallad 'an Hamzah)", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Khallad dari Imam Hamzah. Saudara dari riwayat Khalaf." 
-          };
+          return { name: "Mushaf Khallad (Khallad 'an Hamzah)", desc: "Mushaf Al-Qur'an dengan riwayat Khallad dari Imam Hamzah. Saudara dari riwayat Khalaf." };
         }
         if (name.includes('ابن كثير')) {
-          return { 
-            name: "Mushaf Ibn Kathir", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Ibn Kathir dari Makkah. Salah satu dari 7 Qiraat Mutawatir." 
-          };
+          return { name: "Mushaf Ibn Kathir", desc: "Mushaf Al-Qur'an dengan riwayat Ibn Kathir dari Makkah. Salah satu dari 7 Qiraat Mutawatir." };
         }
         if (name.includes('ابن عامر')) {
-          return { 
-            name: "Mushaf Ibn 'Amir", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Ibn 'Amir dari Syam (Suriah). Salah satu dari 7 Qiraat Mutawatir." 
-          };
+          return { name: "Mushaf Ibn 'Amir", desc: "Mushaf Al-Qur'an dengan riwayat Ibn 'Amir dari Syam (Suriah). Salah satu dari 7 Qiraat Mutawatir." };
         }
         if (name.includes('ابو جعفر') || name.includes('أبو جعفر')) {
-          return { 
-            name: "Mushaf Abu Ja'far", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Abu Ja'far. Salah satu dari 3 Qiraat tambahan yang diakui." 
-          };
+          return { name: "Mushaf Abu Ja'far", desc: "Mushaf Al-Qur'an dengan riwayat Abu Ja'far. Salah satu dari 3 Qiraat tambahan yang diakui." };
         }
         if (name.includes('يعقوب')) {
-          return { 
-            name: "Mushaf Ya'qub", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Ya'qub al-Hadhrami. Salah satu dari 10 Qiraat Mutawatir." 
-          };
+          return { name: "Mushaf Ya'qub", desc: "Mushaf Al-Qur'an dengan riwayat Ya'qub al-Hadhrami. Salah satu dari 10 Qiraat Mutawatir." };
         }
         if (name.includes('إسماعيل') || name.includes('اسماعيل')) {
-          return { 
-            name: "Mushaf Isma'il", 
-            desc: "Mushaf Al-Qur'an dengan riwayat Isma'il ibn Ja'far. Salah satu dari Qiraat Mutawatir." 
-          };
-        };
-        // 16. Mushaf Al-Bazzi (Bazzi 'an Ibn Kathir)
-      if (name.includes('البزي') || name.includes('بزي')) {
-        return { 
-          name: "Mushaf Al-Bazzi (Al-Bazzi 'an Ibn Kathir)", 
-          desc: "Mushaf Al-Qur'an dengan riwayat Al-Bazzi dari Imam Ibn Kathir. Salah satu dari 2 riwayat utama dari Ibn Kathir (Makkah)." 
-        };
-      }
-
-      if (name.includes('قنبل')) {
-        return { 
-          name: "Mushaf Qunbul (Qunbul 'an Ibn Kathir)", 
-          desc: "Mushaf Al-Qur'an dengan riwayat Qunbul dari Imam Ibn Kathir. Saudara dari riwayat Al-Bazzi, sama-sama dari Ibn Kathir." 
-        };
-      }
-
-
-      if (name.includes('التجويد') || name.includes('تجويد')) {
-        return { 
-          name: "Mushaf Tajwid Berwarna", 
-          desc: "Mushaf Al-Qur'an dengan kode warna khusus pada huruf untuk memudahkan mempelajari hukum bacaan Tajwid. Sangat cocok untuk pemula." 
-        };
-      }
-
-
-      if (name.includes('الأوقاف') || name.includes('اوقاف')) {
-        return { 
-          name: "Mushaf Qalun (Versi Libya - Al-Awqaf)", 
-          desc: "Mushaf Al-Qur'an dengan riwayat Qalun dari Imam Nafi', versi khusus dari Libyan General Authority of Awqaf. Digunakan di Libya." 
-        };
-      }
+          return { name: "Mushaf Isma'il", desc: "Mushaf Al-Qur'an dengan riwayat Isma'il ibn Ja'far. Salah satu dari Qiraat Mutawatir." };
+        }
+        if (name.includes('البزي') || name.includes('بزي')) {
+          return { name: "Mushaf Al-Bazzi (Al-Bazzi 'an Ibn Kathir)", desc: "Mushaf Al-Qur'an dengan riwayat Al-Bazzi dari Imam Ibn Kathir. Salah satu dari 2 riwayat utama dari Ibn Kathir (Makkah)." };
+        }
+        if (name.includes('قنبل')) {
+          return { name: "Mushaf Qunbul (Qunbul 'an Ibn Kathir)", desc: "Mushaf Al-Qur'an dengan riwayat Qunbul dari Imam Ibn Kathir. Saudara dari riwayat Al-Bazzi, sama-sama dari Ibn Kathir." };
+        }
+        if (name.includes('التجويد') || name.includes('تجويد')) {
+          return { name: "Mushaf Tajwid Berwarna", desc: "Mushaf Al-Qur'an dengan kode warna khusus pada huruf untuk memudahkan mempelajari hukum bacaan Tajwid. Sangat cocok untuk pemula." };
+        }
+        if (name.includes('الأوقاف') || name.includes('اوقاف')) {
+          return { name: "Mushaf Qalun (Versi Libya - Al-Awqaf)", desc: "Mushaf Al-Qur'an dengan riwayat Qalun dari Imam Nafi', versi khusus dari Libyan General Authority of Awqaf. Digunakan di Libya." };
+        }
 
         return { 
           name: name || 'Mushaf Tidak Dikenal', 
@@ -192,7 +129,6 @@ export const EquranService = {
     if (cached) return cached;
 
     const { data } = await axios.get(`${BASE_URL}/surat`);
-    
     if (data.code === 200) {
       quranCache.set(cacheKey, data.data);
       return data.data;
@@ -209,10 +145,8 @@ export const EquranService = {
     if (cached) return cached;
 
     const { data } = await axios.get(`${BASE_URL}/surat/${nomor}`);
-    
     if (data.code === 200) {
       const raw = data.data;
-      
       const processed = {
         info: {
           nomor: raw.nomor,
@@ -230,7 +164,6 @@ export const EquranService = {
           audio: a.audio[qariId] || a.audio['05']
         }))
       };
-
       quranCache.set(cacheKey, processed);
       return processed;
     }
@@ -244,47 +177,53 @@ export const EquranService = {
     try {
       console.log(`\n========== [MERGED START] ==========`);
       console.log(` Surah: ${nomor}`);
-      console.log(`📜 Mushaf ID: ${mushafId}`);
-      console.log(`🎤 Qari ID: ${qariId}`);
+      console.log(`📜 Mushaf ID dari Frontend: ${mushafId}`);
       
       let arabicData = [];
       let mushafAktifName = 'HAFS (Fallback)';
       let audioFullUrl = '';
 
-      // 1. Coba ambil Teks Arab dari Quranpedia
+      // ✅ PETA TERJEMAHAN: Ubah ID internal kita menjadi Slug yang dikenali Quranpedia
+      const quranpediaSlugMap: Record<string, string> = {
+        "1": "madinah",
+        "hafs": "madinah",
+        "2": "madinah-naskhi",
+        "3": "madinah-nastaliq",
+        "4": "warsh",
+        "5": "al-bazzi",
+        "6": "ad-duri",
+        "7": "qalun",
+        "8": "qunbul",
+        "9": "syubah",
+        "10": "as-susi",
+        "11": "tajwid",
+        "12": "qalun-libya"
+      };
+
+      // Gunakan slug yang dipetakan, atau gunakan mushafId asli jika tidak ada di peta
+      const qpSlug = quranpediaSlugMap[mushafId.toLowerCase()] || mushafId;
+      console.log(`🔄 Diterjemahkan menjadi Slug Quranpedia: ${qpSlug}`);
+
+      // 1. Coba ambil Teks Arab dari Quranpedia menggunakan SLUG
       try {
-        // URL Quranpedia: /v1/quran/{mushafId}/{surahNumber}
-        const quranpediaUrl = `https://api.quranpedia.net/v1/quran/${mushafId}/${nomor}`;
+        const quranpediaUrl = `https://api.quranpedia.net/v1/quran/${qpSlug}/${nomor}`;
         console.log(`🔗 Memanggil Quranpedia: ${quranpediaUrl}`);
         
         const quranpediaRes = await axios.get(quranpediaUrl, { timeout: 10000 });
         
-        console.log(`✅ Quranpedia Response Status: ${quranpediaRes.status}`);
-        console.log(`📦 Quranpedia Response Keys: ${Object.keys(quranpediaRes.data || {}).join(', ')}`);
-        
-        // Coba berbagai struktur data yang mungkin
         if (quranpediaRes.data && Array.isArray(quranpediaRes.data.data)) {
           arabicData = quranpediaRes.data.data;
-          mushafAktifName = mushafId.toUpperCase();
+          mushafAktifName = qpSlug.toUpperCase(); 
           console.log(`✅ Berhasil parse data.data (${arabicData.length} ayat)`);
         } else if (quranpediaRes.data && Array.isArray(quranpediaRes.data.ayat)) {
           arabicData = quranpediaRes.data.ayat;
-          mushafAktifName = mushafId.toUpperCase();
+          mushafAktifName = qpSlug.toUpperCase();
           console.log(`✅ Berhasil parse data.ayat (${arabicData.length} ayat)`);
-        } else if (quranpediaRes.data && Array.isArray(quranpediaRes.data)) {
-          arabicData = quranpediaRes.data;
-          mushafAktifName = mushafId.toUpperCase();
-          console.log(`✅ Berhasil parse data sebagai array (${arabicData.length} ayat)`);
         } else {
-          console.warn(`️ Struktur data Quranpedia tidak dikenali:`, JSON.stringify(quranpediaRes.data).substring(0, 200));
+          console.warn(`⚠️ Struktur data Quranpedia tidak dikenali.`);
         }
       } catch (qpError: any) {
-        const status = qpError.response?.status || 'no-response';
-        console.warn(`❌ Gagal ambil dari Quranpedia:`, {
-          status,
-          message: qpError.message,
-          url: qpError.config?.url
-        });
+        console.warn(`❌ Gagal ambil dari Quranpedia (Status: ${qpError.response?.status}):`, qpError.message);
       }
 
       // 2. Ambil Terjemahan & Audio dari EQuran.id (Fallback utama)
@@ -301,7 +240,7 @@ export const EquranService = {
       
       console.log(`✅ EQuran berhasil: ${translationData.length} ayat, audioFull: ${audioFullUrl ? 'ada' : 'tidak ada'}`);
 
-      // 3. Gabungkan dengan aman (graceful fallback)
+      // 3. Gabungkan dengan aman
       const mergedAyat = translationData.map((ayatTerjemahan: any, index: number) => {
         const ayatArab = arabicData[index] || {};
         
@@ -314,7 +253,9 @@ export const EquranService = {
         };
       });
 
-      const result = {
+      console.log(`========== [MERGED END] Mushaf Aktif: ${mushafAktifName} ==========\n`);
+
+      return {
         info: {
           nomor: infoSurah.nomor || nomor,
           nama: infoSurah.nama,
@@ -327,10 +268,6 @@ export const EquranService = {
         audioFull: audioFullUrl,
         ayat: mergedAyat
       };
-
-      console.log(`========== [MERGED END] Mushaf Aktif: ${mushafAktifName} ==========\n`);
-      
-      return result;
     } catch (error: any) {
       console.error('🔥 CRITICAL ERROR in getSurahDetailMerged:', error.message);
       throw new Error('Gagal memuat detail surah');
@@ -372,7 +309,6 @@ export const EquranService = {
     if (tag) url.searchParams.append('tag', tag);
 
     const { data } = await axios.get(url.toString());
-    
     if (data.status === 'success') {
       const mappedData = data.data.map((item: any) => ({
         id: item.id,
@@ -383,7 +319,6 @@ export const EquranService = {
         grup: item.grup,
         tags: item.tag
       }));
-      
       quranCache.set(cacheKey, mappedData);
       return mappedData;
     }
@@ -399,7 +334,6 @@ export const EquranService = {
     if (cached) return cached;
 
     const { data } = await axios.get(`https://equran.id/api/doa/${id}`);
-    
     if (data.status === 'success') {
       const item = data.data;
       const mappedData = {
@@ -412,7 +346,6 @@ export const EquranService = {
         tags: item.tag,
         tentang: item.tentang
       };
-      
       quranCache.set(cacheKey, mappedData);
       return mappedData;
     }
