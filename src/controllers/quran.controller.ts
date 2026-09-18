@@ -29,11 +29,13 @@ export const QuranController = {
   },
 
   // 3. Detail Surah Merged (Arab Quranpedia + Terjemahan EQuran)
-  async getSurahDetailMerged(req: Request, res: Response) {
+    async getSurahDetailMerged(req: Request, res: Response) {
     try {
       const nomor = parseInt(String(req.params.nomor), 10);
       const mushafId = (req.query.mushafId as string) || 'hafs';
       const qariId = (req.query.qariId as string) || '05';
+      
+      console.log(`📥 Request masuk: /surat-merged/${nomor}?mushafId=${mushafId}&qariId=${qariId}`);
       
       const data = await EquranService.getSurahDetailMerged(nomor, mushafId, qariId);
       res.json({ success: true, data });
