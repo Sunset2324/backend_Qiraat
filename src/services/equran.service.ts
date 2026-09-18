@@ -173,87 +173,65 @@ export const EquranService = {
   // ============================================
   // 3. DETAIL SURAH MERGED (Arab dari Quranpedia + Terjemahan dari EQuran)
   // ============================================
-  async getSurahDetailMerged(nomor: number, mushafId: string, qariId: string = '05') {
+    async getSurahDetailMerged(nomor: number, mushafId: string, qariId: string = '05') {
     try {
       console.log(`\n========== [MERGED START] ==========`);
-      console.log(` Surah: ${nomor}`);
+      console.log(`📖 Surah: ${nomor}`);
       console.log(`📜 Mushaf ID dari Frontend: ${mushafId}`);
       
       let arabicData = [];
-      let mushafAktifName = 'HAFS (Fallback)';
+      // ✅ PERBAIKAN: Gunakan ID yang dipilih user sebagai default, BUKAN "HAFS (Fallback)"
+      let mushafAktifName = mushafId.toUpperCase(); 
       let audioFullUrl = '';
 
       // ✅ PETA TERJEMAHAN: Ubah ID internal kita menjadi Slug yang dikenali Quranpedia
       const quranpediaSlugMap: Record<string, string> = {
-        "1": "madinah",
-        "hafs": "madinah",
-        "2": "madinah-naskhi",
-        "3": "madinah-nastaliq",
-        "4": "warsh",
-        "5": "al-bazzi",
-        "6": "ad-duri",
-        "7": "qalun",
-        "8": "qunbul",
-        "9": "syubah",
-        "10": "as-susi",
-        "11": "tajwid",
-        "12": "qalun-libya"
+        "1": "madinah", "hafs": "madinah",
+        "2": "madinah-naskhi", "3": "madinah-nastaliq",
+        "4": "warsh", "5": "al-bazzi", "6": "ad-duri",
+        "7": "qalun", "8": "qunbul", "9": "syubah",
+        "10": "as-susi", "11": "tajwid", "12": "qalun-libya"
       };
 
-      // Gunakan slug yang dipetakan, atau gunakan mushafId asli jika tidak ada di peta
       const qpSlug = quranpediaSlugMap[mushafId.toLowerCase()] || mushafId;
       console.log(`🔄 Diterjemahkan menjadi Slug Quranpedia: ${qpSlug}`);
 
-      // 1. Coba ambil Teks Arab dari Quranpedia menggunakan SLUG
+      // 1. Coba ambil Teks Arab dari Quranpedia
       try {
         const quranpediaUrl = `https://api.quranpedia.net/v1/quran/${qpSlug}/${nomor}`;
-        console.log(`🔗 Memanggil Quranpedia: ${quranpediaUrl}`);
-        
         const quranpediaRes = await axios.get(quranpediaUrl, { timeout: 10000 });
         
         if (quranpediaRes.data && Array.isArray(quranpediaRes.data.data)) {
           arabicData = quranpediaRes.data.data;
-          mushafAktifName = qpSlug.toUpperCase(); 
-          console.log(`✅ Berhasil parse data.data (${arabicData.length} ayat)`);
+          mushafAktifName = qpSlug.toUpperCase(); // Update jika berhasil
         } else if (quranpediaRes.data && Array.isArray(quranpediaRes.data.ayat)) {
           arabicData = quranpediaRes.data.ayat;
-          mushafAktifName = qpSlug.toUpperCase();
-          console.log(`✅ Berhasil parse data.ayat (${arabicData.length} ayat)`);
-        } else {
-          console.warn(`⚠️ Struktur data Quranpedia tidak dikenali.`);
+          mushafAktifName = qpSlug.toUpperCase(); // Update jika berhasil
         }
       } catch (qpError: any) {
-        console.warn(`❌ Gagal ambil dari Quranpedia (Status: ${qpError.response?.status}):`, qpError.message);
+        // ⚠️ Jika gagal, JANGAN PANIK. mushafAktifName TETAP menggunakan mushafId user
+        console.warn(`⚠️ Quranpedia gagal (Status: ${qpError.response?.status}), tetap gunakan mushafId user: ${mushafId}`);
       }
 
-      // 2. Ambil Terjemahan & Audio dari EQuran.id (Fallback utama)
-      console.log(`🔗 Memanggil EQuran: ${BASE_URL}/surat/${nomor}`);
+      // 2. Ambil Terjemahan & Audio dari EQuran.id (Wajib berhasil)
       const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`);
-      
-      if (equranRes.data.code !== 200) {
-        throw new Error('Gagal mengambil data dasar dari EQuran.id');
-      }
+      if (equranRes.data.code !== 200) throw new Error('EQuran.id failed');
 
       const translationData = equranRes.data.data.ayat || [];
       const infoSurah = equranRes.data.data.info || {};
       audioFullUrl = equranRes.data.data.audioFull?.[qariId] || equranRes.data.data.audioFull?.['05'] || '';
-      
-      console.log(`✅ EQuran berhasil: ${translationData.length} ayat, audioFull: ${audioFullUrl ? 'ada' : 'tidak ada'}`);
 
-      // 3. Gabungkan dengan aman
+      // 3. Gabungkan
       const mergedAyat = translationData.map((ayatTerjemahan: any, index: number) => {
         const ayatArab = arabicData[index] || {};
-        
         return {
           nomor: ayatTerjemahan.nomorAyat || ayatTerjemahan.nomor || (index + 1),
           teksArab: ayatArab.teksArab || ayatArab.text || ayatArab.arab || ayatTerjemahan.teksArab || '',
           teksLatin: ayatTerjemahan.teksLatin || '',
           teksIndonesia: ayatTerjemahan.teksIndonesia || ayatTerjemahan.arti || 'Terjemahan tidak tersedia',
-          audio: ayatTerjemahan.audio ? (ayatTerjemahan.audio[qariId] || ayatTerjemahan.audio['05'] || Object.values(ayatTerjemahan.audio)[0]) : ''
+          audio: ayatTerjemahan.audio ? (ayatTerjemahan.audio[qariId] || ayatTerjemahan.audio['05']) : ''
         };
       });
-
-      console.log(`========== [MERGED END] Mushaf Aktif: ${mushafAktifName} ==========\n`);
 
       return {
         info: {
@@ -263,7 +241,7 @@ export const EquranService = {
           arti: infoSurah.arti,
           jumlahAyat: infoSurah.jumlahAyat || mergedAyat.length,
           tempatTurun: infoSurah.tempatTurun,
-          mushafAktif: mushafAktifName
+          mushafAktif: mushafAktifName // ← Ini sekarang akan menampilkan ID user (misal: "4" atau "WARSH")
         },
         audioFull: audioFullUrl,
         ayat: mergedAyat
@@ -273,7 +251,6 @@ export const EquranService = {
       throw new Error('Gagal memuat detail surah');
     }
   },
-
   // ============================================
   // 4. JADWAL SHALAT
   // ============================================
