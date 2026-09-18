@@ -124,7 +124,37 @@ export const EquranService = {
             name: "Mushaf Isma'il", 
             desc: "Mushaf Al-Qur'an dengan riwayat Isma'il ibn Ja'far. Salah satu dari Qiraat Mutawatir." 
           };
-        }
+        };
+        // 16. Mushaf Al-Bazzi (Bazzi 'an Ibn Kathir)
+      if (name.includes('البزي') || name.includes('بزي')) {
+        return { 
+          name: "Mushaf Al-Bazzi (Al-Bazzi 'an Ibn Kathir)", 
+          desc: "Mushaf Al-Qur'an dengan riwayat Al-Bazzi dari Imam Ibn Kathir. Salah satu dari 2 riwayat utama dari Ibn Kathir (Makkah)." 
+        };
+      }
+
+      if (name.includes('قنبل')) {
+        return { 
+          name: "Mushaf Qunbul (Qunbul 'an Ibn Kathir)", 
+          desc: "Mushaf Al-Qur'an dengan riwayat Qunbul dari Imam Ibn Kathir. Saudara dari riwayat Al-Bazzi, sama-sama dari Ibn Kathir." 
+        };
+      }
+
+
+      if (name.includes('التجويد') || name.includes('تجويد')) {
+        return { 
+          name: "Mushaf Tajwid Berwarna", 
+          desc: "Mushaf Al-Qur'an dengan kode warna khusus pada huruf untuk memudahkan mempelajari hukum bacaan Tajwid. Sangat cocok untuk pemula." 
+        };
+      }
+
+
+      if (name.includes('الأوقاف') || name.includes('اوقاف')) {
+        return { 
+          name: "Mushaf Qalun (Versi Libya - Al-Awqaf)", 
+          desc: "Mushaf Al-Qur'an dengan riwayat Qalun dari Imam Nafi', versi khusus dari Libyan General Authority of Awqaf. Digunakan di Libya." 
+        };
+      }
 
         return { 
           name: name || 'Mushaf Tidak Dikenal', 
