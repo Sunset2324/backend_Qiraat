@@ -170,75 +170,81 @@ export const EquranService = {
     throw new Error('Surah tidak ditemukan');
   },
 
-    // ============================================
-  // 3. DETAIL SURAH MERGED (Arab dari AlQuran.cloud + Terjemahan dari EQuran.id)
+  // ============================================
+  // 3. DETAIL SURAH MERGED (FINAL VERSION)
+  // Teks Arab: SELALU Hafs dari AlQuran.cloud (stabil)
+  // Terjemahan: SELALU dari EQuran.id (Kemenag)
+  // Audio: Sesuai Qari pilihan user
+  // Edukasi: Nama mushaf aktif tetap ditampilkan
   // ============================================
   async getSurahDetailMerged(nomor: number, mushafId: string, qariId: string = '05') {
     try {
-      console.log(`\n========== [MERGED START] ==========`);
-      console.log(` Surah: ${nomor}`);
-      console.log(`📜 Mushaf ID: ${mushafId}`);
+      console.log(`\n========== [MERGED FINAL] ==========`);
+      console.log(`📖 Surah: ${nomor}`);
+      console.log(`📜 Mushaf ID (untuk edukasi): ${mushafId}`);
+      console.log(`🎤 Qari ID (untuk audio): ${qariId}`);
       
-      let arabicData = [];
-      let mushafAktifName = mushafId.toUpperCase();
-
-      // ✅ PETA TERJEMAHAN: ID internal → Edition Slug AlQuran.cloud
-      const alquranEditionMap: Record<string, string> = {
-        "1": "quran-uthmani",       // Hafs Standar Madinah
-        "hafs": "quran-uthmani",
-        "2": "quran-uthmani",       // Hafs Naskhi 
-        "3": "quran-uthmani",       // Hafs Nastaliq 
-        "4": "quran-warsh",         // Warsh 'an Nafi'
-        "7": "quran-qalun",         // Qalun 'an Nafi'
-        "12": "quran-qalun",        // Qalun Libya 
-        // Fallback ke Uthmani untuk yang belum tersedia di AlQuran.cloud
-        "5": "quran-uthmani", "6": "quran-uthmani", "8": "quran-uthmani", 
-        "9": "quran-uthmani", "10": "quran-uthmani", "11": "quran-uthmani" 
+      // ✅ PETA NAMA MUSHAF untuk ditampilkan di UI (edukasi)
+      const mushafNameMap: Record<string, string> = {
+        "1": "Hafs (Standar Madinah)",
+        "hafs": "Hafs (Standar Madinah)",
+        "2": "Hafs Versi Naskhi",
+        "3": "Hafs Versi Nastaliq",
+        "4": "Warsh 'an Nafi'",
+        "5": "Al-Bazzi 'an Ibn Kathir",
+        "6": "Ad-Duri 'an Abu 'Amr",
+        "7": "Qalun 'an Nafi'",
+        "8": "Qunbul 'an Ibn Kathir",
+        "9": "Syu'bah 'an 'Asim",
+        "10": "As-Susi 'an Abu 'Amr",
+        "11": "Tajwid Berwarna",
+        "12": "Qalun (Versi Libya)"
       };
 
-      const edition = alquranEditionMap[mushafId.toLowerCase()] || "quran-uthmani";
-      console.log(`🔄 Edition AlQuran.cloud: ${edition}`);
+      const mushafDisplayName = mushafNameMap[mushafId.toLowerCase()] || mushafId.toUpperCase();
+      console.log(`🏷️ Nama Mushaf untuk UI: ${mushafDisplayName}`);
 
-      // 1. Ambil Teks Arab dari AlQuran.cloud
-      try {
-        const alquranUrl = `https://api.alquran.cloud/v1/surah/${nomor}/${edition}`;
-        console.log(`🔗 Memanggil: ${alquranUrl}`);
-        
-        const alquranRes = await axios.get(alquranUrl, { timeout: 10000 });
-        
-        // ✅ Parsing sesuai JSON yang Anda berikan
-        if (alquranRes.data.code === 200 && alquranRes.data.data.ayahs) {
-          arabicData = alquranRes.data.data.ayahs; 
-          mushafAktifName = alquranRes.data.data.edition.englishName || edition.toUpperCase();
-          console.log(`✅ AlQuran.cloud berhasil: ${arabicData.length} ayat`);
-        }
-      } catch (alError: any) {
-        console.warn(`⚠️ AlQuran.cloud gagal: ${alError.message}`);
+      // 1. Ambil Teks Arab Hafs dari AlQuran.cloud (WAJIB BERHASIL)
+      console.log(`🔗 Mengambil teks Arab Hafs dari AlQuran.cloud...`);
+      const alquranRes = await axios.get(
+        `https://api.alquran.cloud/v1/surah/${nomor}/quran-uthmani`,
+        { timeout: 15000 }
+      );
+
+      if (alquranRes.data.code !== 200 || !alquranRes.data.data.ayahs) {
+        throw new Error('AlQuran.cloud gagal mengembalikan data Hafs');
       }
 
-      // 2. Ambil Terjemahan & Audio dari EQuran.id
+      const arabicAyahs = alquranRes.data.data.ayahs;
+      console.log(`✅ AlQuran.cloud berhasil: ${arabicAyahs.length} ayat Hafs`);
+
+      // 2. Ambil Terjemahan & Audio dari EQuran.id (WAJIB BERHASIL)
+      console.log(`🔗 Mengambil terjemahan & audio dari EQuran.id...`);
       const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`);
-      if (equranRes.data.code !== 200) throw new Error('EQuran.id failed');
+      
+      if (equranRes.data.code !== 200) {
+        throw new Error('EQuran.id gagal');
+      }
 
       const translationData = equranRes.data.data.ayat || [];
       const infoSurah = equranRes.data.data.info || {};
       const audioFullUrl = equranRes.data.data.audioFull?.[qariId] || equranRes.data.data.audioFull?.['05'] || '';
+      console.log(`✅ EQuran.id berhasil: ${translationData.length} ayat terjemahan`);
 
-      // 3. Gabungkan
+      // 3. Gabungkan: Teks Arab Hafs + Terjemahan Indonesia + Audio Qari
       const mergedAyat = translationData.map((ayatTerjemahan: any, index: number) => {
-        const ayatArab = arabicData[index] || {};
+        const ayatArab = arabicAyahs[index] || {};
         
         return {
-          nomor: ayatTerjemahan.nomorAyat || (index + 1),
-          // ✅ Mengambil teks dari field 'text' sesuai JSON AlQuran.cloud
-          teksArab: ayatArab.text || ayatTerjemahan.teksArab || '', 
+          nomor: ayatTerjemahan.nomorAyat || ayatTerjemahan.nomor || (index + 1),
+          teksArab: ayatArab.text || '', // Dari AlQuran.cloud (Hafs)
           teksLatin: ayatTerjemahan.teksLatin || '',
-          teksIndonesia: ayatTerjemahan.teksIndonesia || 'Terjemahan tidak tersedia',
+          teksIndonesia: ayatTerjemahan.teksIndonesia || ayatTerjemahan.arti || 'Terjemahan tidak tersedia',
           audio: ayatTerjemahan.audio ? (ayatTerjemahan.audio[qariId] || ayatTerjemahan.audio['05']) : ''
         };
       });
 
-      console.log(`========== [MERGED END] Mushaf: ${mushafAktifName} ==========\n`);
+      console.log(`========== [MERGED FINAL END] ==========\n`);
 
       return {
         info: {
@@ -248,13 +254,13 @@ export const EquranService = {
           arti: infoSurah.arti,
           jumlahAyat: infoSurah.jumlahAyat || mergedAyat.length,
           tempatTurun: infoSurah.tempatTurun,
-          mushafAktif: mushafAktifName
+          mushafAktif: mushafDisplayName // Tampilkan nama mushaf untuk edukasi
         },
         audioFull: audioFullUrl,
         ayat: mergedAyat
       };
     } catch (error: any) {
-      console.error('🔥 CRITICAL ERROR:', error.message);
+      console.error('🔥 CRITICAL ERROR in getSurahDetailMerged:', error.message);
       throw new Error('Gagal memuat detail surah');
     }
   },
