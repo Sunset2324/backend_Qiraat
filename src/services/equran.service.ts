@@ -11,6 +11,16 @@ const shalatCache = new NodeCache({ stdTTL: 24 * 60 * 60 }); // Cache shalat 1 h
 
 const BASE_URL = process.env.EQURAN_API_BASE_URL || 'https://equran.id/api/v2';
 
+interface ArabicAyah {
+  number: number;
+  text: string;
+  hafsNumbers: number[];
+}
+interface ArabicResult {
+  source: 'quranpedia' | 'alquran.cloud';
+  ayahs: ArabicAyah[];
+}
+
 export const EquranService = {
   
   // ============================================
@@ -171,99 +181,139 @@ export const EquranService = {
   },
 
   // ============================================
-  // 3. DETAIL SURAH MERGED (FINAL VERSION)
-  // Teks Arab: SELALU Hafs dari AlQuran.cloud (stabil)
-  // Terjemahan: SELALU dari EQuran.id (Kemenag)
-  // Audio: Sesuai Qari pilihan user
-  // Edukasi: Nama mushaf aktif tetap ditampilkan
+  // 3a. TEKS ARAB (helper untuk merged)
+  // Prioritas : Quranpedia sesuai mushafId  →  fallback AlQuran.cloud (Hafs)
+  // Endpoint Quranpedia yang benar: GET /v1/mushafs/{mushafId}/{surahId}
   // ============================================
-  async getSurahDetailMerged(nomor: number, mushafId: string, qariId: string = '05') {
+  async getArabicText(nomor: number, mushafId: string): Promise<ArabicResult> {
+    const cacheKey = `arab_${mushafId}_${nomor}`;
+    const cached = quranCache.get<ArabicResult>(cacheKey);
+    if (cached) return cached;
+
+    // a. Quranpedia — mushafId HARUS angka (ID asli dari /v1/mushafs)
+    if (/^\d+$/.test(mushafId)) {
+      const url = `https://api.quranpedia.net/v1/mushafs/${mushafId}/${nomor}`;
+      try {
+        const { data } = await axios.get(url, { timeout: 15000 });
+        const list: any[] = Array.isArray(data) ? data : [];
+
+        if (list.length > 0 && list[0].text) {
+          const result: ArabicResult = {
+            source: 'quranpedia',
+            ayahs: list.map((a, i) => {
+              const number = a.number ?? i + 1;
+              return {
+                number,
+                text: a.text,
+                // nomor ayat ini di Hafs (dipakai untuk mencocokkan terjemahan & audio EQuran)
+                hafsNumbers:
+                  Array.isArray(a.number_in_hafs) && a.number_in_hafs.length
+                    ? a.number_in_hafs
+                    : [number],
+              };
+            }),
+          };
+          quranCache.set(cacheKey, result);
+          console.log(`✅ Quranpedia OK: mushaf ${mushafId}, surah ${nomor}, ${list.length} ayat`);
+          return result;
+        }
+        console.warn(`⚠️ Quranpedia balas 200 tapi struktur tidak dikenali (${url}):`,
+          JSON.stringify(data).substring(0, 200));
+      } catch (e: any) {
+        console.warn(`❌ Quranpedia gagal (${url}) → status: ${e.response?.status ?? 'no-response'} | ${e.message}`);
+      }
+    } else {
+      console.warn(`⚠️ mushafId "${mushafId}" bukan angka. Pakai ID dari /api/mushafs (contoh: 1).`);
+    }
+
+    // b. Fallback: AlQuran.cloud (Hafs)
+    const res = await axios.get(
+      `https://api.alquran.cloud/v1/surah/${nomor}/quran-uthmani`,
+      { timeout: 15000 }
+    );
+    if (res.data.code !== 200 || !res.data.data?.ayahs) {
+      throw new Error('AlQuran.cloud gagal mengembalikan data Hafs');
+    }
+    const result: ArabicResult = {
+      source: 'alquran.cloud',
+      ayahs: res.data.data.ayahs.map((a: any) => ({
+        number: a.numberInSurah,
+        text: a.text,
+        hafsNumbers: [a.numberInSurah],
+      })),
+    };
+    // TTL pendek: supaya request berikutnya mencoba Quranpedia lagi
+    quranCache.set(cacheKey, result, 5 * 60);
+    return result;
+  },
+
+  // ============================================
+  // 3b. DETAIL SURAH MERGED
+  // Teks Arab  : Quranpedia (sesuai mushafId), fallback AlQuran.cloud
+  // Terjemahan : EQuran.id (Kemenag) — Latin & audio juga berbasis Hafs
+  // info.sumberArab memberi tahu sumber Arab yang BENAR-BENAR dipakai
+  // ============================================
+  async getSurahDetailMerged(nomor: number, mushafId: string = '1', qariId: string = '05') {
     try {
-      console.log(`\n========== [MERGED FINAL] ==========`);
-      console.log(`📖 Surah: ${nomor}`);
-      console.log(`📜 Mushaf ID (untuk edukasi): ${mushafId}`);
-      console.log(`🎤 Qari ID (untuk audio): ${qariId}`);
-      
-      // ✅ PETA NAMA MUSHAF untuk ditampilkan di UI (edukasi)
-      const mushafNameMap: Record<string, string> = {
-        "1": "Hafs (Standar Madinah)",
-        "hafs": "Hafs (Standar Madinah)",
-        "2": "Hafs Versi Naskhi",
-        "3": "Hafs Versi Nastaliq",
-        "4": "Warsh 'an Nafi'",
-        "5": "Al-Bazzi 'an Ibn Kathir",
-        "6": "Ad-Duri 'an Abu 'Amr",
-        "7": "Qalun 'an Nafi'",
-        "8": "Qunbul 'an Ibn Kathir",
-        "9": "Syu'bah 'an 'Asim",
-        "10": "As-Susi 'an Abu 'Amr",
-        "11": "Tajwid Berwarna",
-        "12": "Qalun (Versi Libya)"
-      };
+      console.log(`\n[MERGED] surah=${nomor} mushafId=${mushafId} qariId=${qariId}`);
 
-      const mushafDisplayName = mushafNameMap[mushafId.toLowerCase()] || mushafId.toUpperCase();
-      console.log(`🏷️ Nama Mushaf untuk UI: ${mushafDisplayName}`);
+      // 1. EQuran.id: terjemahan, latin, audio, info surah
+      const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`, { timeout: 15000 });
+      if (equranRes.data.code !== 200) throw new Error('EQuran.id gagal');
 
-      // 1. Ambil Teks Arab Hafs dari AlQuran.cloud (WAJIB BERHASIL)
-      console.log(`🔗 Mengambil teks Arab Hafs dari AlQuran.cloud...`);
-      const alquranRes = await axios.get(
-        `https://api.alquran.cloud/v1/surah/${nomor}/quran-uthmani`,
-        { timeout: 15000 }
-      );
+      const eq = equranRes.data.data;
+      const translationData: any[] = eq.ayat || [];
+      const audioFullUrl = eq.audioFull?.[qariId] || eq.audioFull?.['05'] || '';
 
-      if (alquranRes.data.code !== 200 || !alquranRes.data.data.ayahs) {
-        throw new Error('AlQuran.cloud gagal mengembalikan data Hafs');
-      }
+      // 2. Teks Arab sesuai mushaf
+      const arab = await EquranService.getArabicText(nomor, mushafId);
 
-      const arabicAyahs = alquranRes.data.data.ayahs;
-      console.log(`✅ AlQuran.cloud berhasil: ${arabicAyahs.length} ayat Hafs`);
+      // 3. Nama mushaf untuk UI (ambil dari daftar Quranpedia, bukan tebakan manual)
+      const mushafList = ((await EquranService.getMushafList().catch(() => [])) as any[]) || [];
+      const mushafName =
+        mushafList.find((m: any) => m.id === String(mushafId))?.name ||
+        (arab.source === 'quranpedia' ? `Mushaf ${mushafId}` : 'Hafs (Standar Madinah)');
 
-      // 2. Ambil Terjemahan & Audio dari EQuran.id (WAJIB BERHASIL)
-      console.log(`🔗 Mengambil terjemahan & audio dari EQuran.id...`);
-      const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`);
-      
-      if (equranRes.data.code !== 200) {
-        throw new Error('EQuran.id gagal');
-      }
+      // 4. Index terjemahan berdasarkan nomor ayat Hafs
+      const translationByNo = new Map<number, any>();
+      translationData.forEach((t: any) => translationByNo.set(t.nomorAyat, t));
 
-      const translationData = equranRes.data.data.ayat || [];
-      const infoSurah = equranRes.data.data.info || {};
-      const audioFullUrl = equranRes.data.data.audioFull?.[qariId] || equranRes.data.data.audioFull?.['05'] || '';
-      console.log(`✅ EQuran.id berhasil: ${translationData.length} ayat terjemahan`);
-
-      // 3. Gabungkan: Teks Arab Hafs + Terjemahan Indonesia + Audio Qari
-      const mergedAyat = translationData.map((ayatTerjemahan: any, index: number) => {
-        const ayatArab = arabicAyahs[index] || {};
-        
+      // 5. Gabungkan — Arab jadi patokan (jumlah ayat qiraat bisa beda dengan Hafs)
+      const mergedAyat = arab.ayahs.map((a) => {
+        const refs = a.hafsNumbers.map((n) => translationByNo.get(n)).filter(Boolean);
+        const first = refs[0];
         return {
-          nomor: ayatTerjemahan.nomorAyat || ayatTerjemahan.nomor || (index + 1),
-          teksArab: ayatArab.text || '', // Dari AlQuran.cloud (Hafs)
-          teksLatin: ayatTerjemahan.teksLatin || '',
-          teksIndonesia: ayatTerjemahan.teksIndonesia || ayatTerjemahan.arti || 'Terjemahan tidak tersedia',
-          audio: ayatTerjemahan.audio ? (ayatTerjemahan.audio[qariId] || ayatTerjemahan.audio['05']) : ''
+          nomor: a.number,
+          teksArab: a.text,
+          teksLatin: refs.map((r: any) => r.teksLatin).filter(Boolean).join(' '),
+          teksIndonesia:
+            refs.map((r: any) => r.teksIndonesia).filter(Boolean).join(' ') ||
+            'Terjemahan tidak tersedia',
+          audio: first?.audio ? (first.audio[qariId] || first.audio['05'] || '') : '',
         };
       });
 
-      console.log(`========== [MERGED FINAL END] ==========\n`);
-
       return {
         info: {
-          nomor: infoSurah.nomor || nomor,
-          nama: infoSurah.nama,
-          namaLatin: infoSurah.namaLatin,
-          arti: infoSurah.arti,
-          jumlahAyat: infoSurah.jumlahAyat || mergedAyat.length,
-          tempatTurun: infoSurah.tempatTurun,
-          mushafAktif: mushafDisplayName // Tampilkan nama mushaf untuk edukasi
+          nomor: eq.nomor || nomor,
+          nama: eq.nama ?? eq.info?.nama,
+          namaLatin: eq.namaLatin ?? eq.info?.namaLatin,
+          arti: eq.arti ?? eq.info?.arti,
+          jumlahAyat: mergedAyat.length,
+          tempatTurun: eq.tempatTurun ?? eq.info?.tempatTurun,
+          mushafId,
+          mushafAktif: mushafName,
+          sumberArab: arab.source, // 'quranpedia' | 'alquran.cloud'
         },
         audioFull: audioFullUrl,
-        ayat: mergedAyat
+        ayat: mergedAyat,
       };
     } catch (error: any) {
       console.error('🔥 CRITICAL ERROR in getSurahDetailMerged:', error.message);
       throw new Error('Gagal memuat detail surah');
     }
   },
+
   // ============================================
   // 4. JADWAL SHALAT
   // ============================================

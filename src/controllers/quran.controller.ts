@@ -32,8 +32,12 @@ export const QuranController = {
     async getSurahDetailMerged(req: Request, res: Response) {
     try {
       const nomor = parseInt(String(req.params.nomor), 10);
-      const mushafId = (req.query.mushafId as string) || 'hafs';
+      const mushafId = (req.query.mushafId as string) || '1'; // ID Quranpedia (1 = Hafs)
       const qariId = (req.query.qariId as string) || '05';
+
+      if (isNaN(nomor) || nomor < 1 || nomor > 114) {
+        return res.status(400).json({ success: false, message: 'Nomor surah harus 1-114' });
+      }
       
       console.log(`📥 Request masuk: /surat-merged/${nomor}?mushafId=${mushafId}&qariId=${qariId}`);
       
