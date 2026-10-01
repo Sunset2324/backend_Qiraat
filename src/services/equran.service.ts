@@ -1,6 +1,7 @@
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import dotenv from 'dotenv';
+import { ReciterService } from './reciter.service';
 
 // Memuat variabel dari file .env
 dotenv.config();
@@ -24,45 +25,10 @@ interface ArabicResult {
 export const EquranService = {
   
   // ============================================
-  // 0a. DAFTAR QARI / RECITER (Dari Quranpedia)
-  // ============================================
-  async getReciters() {
-    const cacheKey = 'quranpedia_reciters_v1';
-    const cached = quranCache.get(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const { data } = await axios.get('https://api.quranpedia.net/v1/reciters');
-      
-      const mappedReciters = (Array.isArray(data) ? data : []).map((r: any) => {
-        // Cek apakah klasifikasi mengandung "آيات" (per ayat)
-        const isPerAyah = r.classification && r.classification.includes('آيات');
-        return {
-          id: String(r.id),
-          name: r.name,
-          nameLatin: r.name_latin || r.name,
-          server: r.server,
-          classification: r.classification,
-          isPerAyah: isPerAyah,
-        };
-      });
-
-      // Urutkan: prioritaskan yang "per ayat" di paling atas agar mudah dipilih untuk "Ikuti Bacaan"
-      mappedReciters.sort((a: any, b: any) => (b.isPerAyah ? 1 : 0) - (a.isPerAyah ? 1 : 0));
-
-      quranCache.set(cacheKey, mappedReciters);
-      return mappedReciters;
-    } catch (error: any) {
-      console.error('Gagal mengambil data reciter:', error.message);
-      throw new Error('Gagal memuat daftar qari');
-    }
-  },
-
-  // ============================================
-  // 0b. MUSHAF LIST (Dari Quranpedia + Terjemahan)
+  // 0. MUSHAF LIST (Dari Quranpedia + Terjemahan)
   // ============================================
   async getMushafList() {
-    const cacheKey = 'quranpedia_mushafs_translated_v2';
+    const cacheKey = 'quranpedia_mushafs_translated_v3';
     const cached = quranCache.get(cacheKey);
     if (cached) return cached;
 
@@ -153,7 +119,8 @@ export const EquranService = {
           id: String(item.id || item.slug || item.kode || Math.random().toString(36)), 
           name: translation.name,
           arabic: arabicName,
-          description: translation.desc
+          description: translation.desc,
+          rawi: item.rawi?.name ?? null // dipakai untuk memfilter daftar qari
         };
       });
 
@@ -182,26 +149,16 @@ export const EquranService = {
   },
 
   // ============================================
-  // 2. DETAIL SURAH (Default Hafs, Audio dari Quranpedia)
+  // 2. DETAIL SURAH (Default Hafs dari EQuran.id)
   // ============================================
-  async getSurahDetail(nomor: number, reciterId: string = '114') {
-    const cacheKey = `surah_${nomor}_reciter_${reciterId}`;
+  async getSurahDetail(nomor: number, qariId: string = '05') {
+    const cacheKey = `surah_${nomor}_qari_${qariId}`;
     const cached = quranCache.get(cacheKey);
     if (cached) return cached;
 
-    try {
-      const { data } = await axios.get(`${BASE_URL}/surat/${nomor}`);
-      if (data.code !== 200) throw new Error('Surah tidak ditemukan');
-      
+    const { data } = await axios.get(`${BASE_URL}/surat/${nomor}`);
+    if (data.code === 200) {
       const raw = data.data;
-      
-      // Ambil info reciter untuk URL audio
-      const reciters = await EquranService.getReciters();
-      const reciter = reciters.find((r: any) => r.id === String(reciterId)) || reciters[0];
-
-      // Bangun URL audio dinamis
-      const audioFullUrl = reciter ? `${reciter.server}/1/${nomor}.mp3` : '';
-
       const processed = {
         info: {
           nomor: raw.nomor,
@@ -209,26 +166,20 @@ export const EquranService = {
           namaLatin: raw.namaLatin,
           arti: raw.arti,
           jumlahAyat: raw.jumlahAyat,
-          reciterAktif: reciter ? (reciter.nameLatin || reciter.name) : 'Unknown',
         },
-        audioFull: audioFullUrl,
-        ayat: raw.ayat.map((a: any) => {
-          const audioUrl = reciter ? `${reciter.server}/1/${nomor}/${a.nomorAyat}.mp3` : '';
-          return {
-            nomor: a.nomorAyat,
-            teksArab: a.teksArab,
-            teksLatin: a.teksLatin,
-            teksIndonesia: a.teksIndonesia,
-            audio: audioUrl
-          };
-        })
+        audioFull: raw.audioFull[qariId] || raw.audioFull['05'],
+        ayat: raw.ayat.map((a: any) => ({
+          nomor: a.nomorAyat,
+          teksArab: a.teksArab,
+          teksLatin: a.teksLatin,
+          teksIndonesia: a.teksIndonesia,
+          audio: a.audio[qariId] || a.audio['05']
+        }))
       };
       quranCache.set(cacheKey, processed);
       return processed;
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getSurahDetail:", error.message);
-      throw new Error('Gagal memuat detail surah');
     }
+    throw new Error('Surah tidak ditemukan');
   },
 
   // ============================================
@@ -256,7 +207,7 @@ export const EquranService = {
               return {
                 number,
                 text: a.text,
-                // nomor ayat ini di Hafs (dipakai untuk mencocokkan terjemahan)
+                // nomor ayat ini di Hafs (dipakai untuk mencocokkan terjemahan & audio EQuran)
                 hafsNumbers:
                   Array.isArray(a.number_in_hafs) && a.number_in_hafs.length
                     ? a.number_in_hafs
@@ -299,48 +250,45 @@ export const EquranService = {
   },
 
   // ============================================
-  // 3b. DETAIL SURAH MERGED (Versi Baru: Audio Quranpedia)
+  // 3b. DETAIL SURAH MERGED
   // Teks Arab  : Quranpedia (sesuai mushafId), fallback AlQuran.cloud
-  // Terjemahan : EQuran.id (Kemenag) — Latin
-  // Audio      : Quranpedia (Dinamis berdasarkan reciter & mushaf)
+  // Terjemahan : EQuran.id (Kemenag) — Latin & audio juga berbasis Hafs
+  // info.sumberArab memberi tahu sumber Arab yang BENAR-BENAR dipakai
   // ============================================
-  async getSurahDetailMerged(nomor: number, mushafId: string = '1', reciterId: string = '114') {
+  async getSurahDetailMerged(nomor: number, mushafId: string = '1', qariId: string = '05', reciterId?: number) {
     try {
-      console.log(`\n[MERGED] surah=${nomor} mushafId=${mushafId} reciterId=${reciterId}`);
+      console.log(`\n[MERGED] surah=${nomor} mushafId=${mushafId} qariId=${qariId}`);
 
-      // 1. Ambil Info Reciter untuk mendapatkan base URL server
-      const reciters = await EquranService.getReciters();
-      const reciter = reciters.find((r: any) => r.id === String(reciterId)) || reciters[0];
-      
-      if (!reciter) throw new Error('Qari tidak ditemukan');
-
-      // 2. EQuran.id: Hanya untuk Terjemahan & Latin (Hafs)
+      // 1. EQuran.id: terjemahan, latin, audio, info surah
       const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`, { timeout: 15000 });
       if (equranRes.data.code !== 200) throw new Error('EQuran.id gagal');
 
       const eq = equranRes.data.data;
       const translationData: any[] = eq.ayat || [];
+      let audioFullUrl = eq.audioFull?.[qariId] || eq.audioFull?.['05'] || '';
 
-      // 3. Teks Arab sesuai mushaf
+      // Kalau reciterId (Quranpedia) diberikan, audio diambil dari sana.
+      // Kalau tidak ketemu, otomatis pakai audio EQuran.id (qariId) seperti biasa.
+      const reciter = reciterId ? await ReciterService.getById(reciterId).catch(() => undefined) : undefined;
+      if (reciter) audioFullUrl = ReciterService.fullSurahUrl(reciter, nomor);
+
+      // 2. Teks Arab sesuai mushaf
       const arab = await EquranService.getArabicText(nomor, mushafId);
 
-      // 4. Nama mushaf untuk UI
+      // 3. Nama mushaf untuk UI (ambil dari daftar Quranpedia, bukan tebakan manual)
       const mushafList = ((await EquranService.getMushafList().catch(() => [])) as any[]) || [];
       const mushafName =
         mushafList.find((m: any) => m.id === String(mushafId))?.name ||
         (arab.source === 'quranpedia' ? `Mushaf ${mushafId}` : 'Hafs (Standar Madinah)');
 
-      // 5. Index terjemahan berdasarkan nomor ayat Hafs
+      // 4. Index terjemahan berdasarkan nomor ayat Hafs
       const translationByNo = new Map<number, any>();
       translationData.forEach((t: any) => translationByNo.set(t.nomorAyat, t));
 
-      // 6. Gabungkan & BANGUN URL AUDIO QURANPEDIA
+      // 5. Gabungkan — Arab jadi patokan (jumlah ayat qiraat bisa beda dengan Hafs)
       const mergedAyat = arab.ayahs.map((a) => {
         const refs = a.hafsNumbers.map((n) => translationByNo.get(n)).filter(Boolean);
-        
-        // Konstruksi URL Audio Dinamis: {server}/{mushaf_id}/{nomor_surah}/{nomor_ayat}.mp3
-        const audioUrl = `${reciter.server}/${mushafId}/${nomor}/${a.number}.mp3`;
-
+        const first = refs[0];
         return {
           nomor: a.number,
           teksArab: a.text,
@@ -348,12 +296,11 @@ export const EquranService = {
           teksIndonesia:
             refs.map((r: any) => r.teksIndonesia).filter(Boolean).join(' ') ||
             'Terjemahan tidak tersedia',
-          audio: audioUrl, // <-- PENGGANTI AUDIO EQURAN
+          audio: reciter
+            ? ReciterService.ayahUrl(reciter, nomor, a.number)
+            : first?.audio ? (first.audio[qariId] || first.audio['05'] || '') : '',
         };
       });
-
-      // Audio Full Surah: {server}/{mushaf_id}/{nomor_surah}.mp3
-      const audioFull = `${reciter.server}/${mushafId}/${nomor}.mp3`;
 
       return {
         info: {
@@ -365,11 +312,11 @@ export const EquranService = {
           tempatTurun: eq.tempatTurun ?? eq.info?.tempatTurun,
           mushafId,
           mushafAktif: mushafName,
-          sumberArab: arab.source,
-          reciterAktif: reciter.nameLatin || reciter.name,
-          isPerAyah: reciter.isPerAyah,
+          sumberArab: arab.source, // 'quranpedia' | 'alquran.cloud'
+          sumberAudio: reciter ? 'quranpedia' : 'equran',
+          reciterAktif: reciter ? { id: reciter.id, nama: reciter.reciter, perAyah: reciter.perAyah } : null,
         },
-        audioFull: audioFull,
+        audioFull: audioFullUrl,
         ayat: mergedAyat,
       };
     } catch (error: any) {
