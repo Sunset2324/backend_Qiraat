@@ -1,131 +1,71 @@
-import { Request, Response } from 'express';
-import { EquranService } from '../services/equran.service';
-import { ReciterService } from '../services/reciter.service';
+import axios from 'axios';
+import NodeCache from 'node-cache';
 
-export const QuranController = {
-  
-  // 1. Daftar Semua Surah
-  async getAllSurah(req: Request, res: Response) {
+// Cache daftar qari selama 30 hari karena jarang berubah
+const cache = new NodeCache({ stdTTL: 30 * 24 * 60 * 60 });
+
+export const ReciterService = {
+  /**
+   * Mengambil daftar qari lengkap dari Quranpedia
+   * Opsional: filter berdasarkan nama rawi (misal: 'حفص')
+   */
+  async getPublicList(rawi?: string) {
+    const cacheKey = rawi ? `reciters_${rawi}` : 'reciters_all';
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
     try {
-      const data = await EquranService.getAllSurah();
-      res.json({ success: true, data });
+      const { data } = await axios.get('https://api.quranpedia.net/v1/reciters');
+      let list = Array.isArray(data) ? data : [];
+
+      const mapped = list.map((r: any) => ({
+        id: Number(r.id),
+        nama: r.name,
+        namaLatin: r.name_latin || r.name,
+        server: r.server,
+        classification: r.classification,
+        perAyah: r.classification && r.classification.includes('آيات'), // true jika mendukung per-ayat
+      }));
+
+      // Prioritaskan qari yang mendukung "per-ayat" agar muncul di urutan atas
+      mapped.sort((a: any, b: any) => (b.perAyah ? 1 : 0) - (a.perAyah ? 1 : 0));
+
+      // Filter jika ada parameter rawi
+      const filtered = rawi 
+        ? mapped.filter((r: any) => r.nama.includes(rawi) || r.namaLatin.toLowerCase().includes(rawi.toLowerCase())) 
+        : mapped;
+
+      cache.set(cacheKey, filtered);
+      return filtered;
     } catch (error: any) {
-      console.error(" BACKEND ERROR getAllSurah:", error.message);
-      res.status(500).json({ success: false, message: error.message });
+      console.error('Gagal mengambil data reciter:', error.message);
+      throw new Error('Gagal memuat daftar qari');
     }
   },
 
-  // 2. Detail Surah (Default Hafs)
-  async getSurahDetail(req: Request, res: Response) {
-    try {
-      const nomor = parseInt(String(req.params.nomor), 10);
-      const qari = (req.query.qari as string) || '05';
-      
-      const data = await EquranService.getSurahDetail(nomor, qari);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getSurahDetail:", error.message);
-      res.status(404).json({ success: false, message: error.message });
-    }
+  /**
+   * Mengambil detail 1 qari berdasarkan ID
+   */
+  async getById(id: number) {
+    const list = await this.getPublicList();
+    const reciter = list.find((r: any) => r.id === id);
+    if (!reciter) throw new Error('Reciter tidak ditemukan');
+    return reciter;
   },
 
-  // 3. Detail Surah Merged (Arab Quranpedia + Terjemahan EQuran)
-    async getSurahDetailMerged(req: Request, res: Response) {
-    try {
-      const nomor = parseInt(String(req.params.nomor), 10);
-      const mushafId = (req.query.mushafId as string) || '1'; // ID Quranpedia (1 = Hafs)
-      const qariId = (req.query.qariId as string) || '05';
-      const reciterParsed = parseInt(String(req.query.reciterId ?? ''), 10);
-      const reciterId = Number.isFinite(reciterParsed) ? reciterParsed : undefined;
-
-      if (isNaN(nomor) || nomor < 1 || nomor > 114) {
-        return res.status(400).json({ success: false, message: 'Nomor surah harus 1-114' });
-      }
-      
-      console.log(`📥 Request masuk: /surat-merged/${nomor}?mushafId=${mushafId}&qariId=${qariId}&reciterId=${reciterId ?? '-'}`);
-      
-      const data = await EquranService.getSurahDetailMerged(nomor, mushafId, qariId, reciterId);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getSurahDetailMerged:", error.message);
-      res.status(500).json({ success: false, message: error.message });
-    }
+  /**
+   * Helper: Membuat URL audio Full Surah
+   */
+  fullSurahUrl(reciter: any, surahNomor: number): string {
+    // Pola standar Quranpedia: {server}/{nomor_surah}.mp3
+    return `${reciter.server}/${surahNomor}.mp3`;
   },
 
-  // 4. Jadwal Shalat
-  async getJadwalShalat(req: Request, res: Response) {
-    try {
-      const { provinsi, kabkota, bulan, tahun } = req.body;
-      
-      if (!provinsi || !kabkota || !bulan) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Provinsi, Kab/Kota, dan Bulan wajib diisi' 
-        });
-      }
-
-      const data = await EquranService.getJadwalShalat(
-        provinsi, 
-        kabkota, 
-        parseInt(String(bulan), 10), 
-        tahun ? parseInt(String(tahun), 10) : new Date().getFullYear()
-      );
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getJadwalShalat:", error.message);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  },
-
-  // 5. Daftar Doa
-  async getDaftarDoa(req: Request, res: Response) {
-    try {
-      const { grup, tag } = req.query;
-      const data = await EquranService.getDaftarDoa(grup as string, tag as string);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getDaftarDoa:", error.message);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  },
-
-  // 6. Detail Doa
-  async getDetailDoa(req: Request, res: Response) {
-    try {
-      const id = parseInt(String(req.params.id), 10);
-      
-      if (isNaN(id)) {
-        return res.status(400).json({ success: false, message: 'ID doa harus berupa angka' });
-      }
-
-      const data = await EquranService.getDetailDoa(id);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getDetailDoa:", error.message);
-      res.status(404).json({ success: false, message: error.message });
-    }
-  },
-
-  // 7. Daftar Mushaf/Qiraat (Dari Quranpedia + Terjemahan)
-  async getMushafList(req: Request, res: Response) {
-    try {
-      const data = await EquranService.getMushafList();
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getMushafList:", error.message);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  },
-
-  // 8. Daftar Qari lengkap (Quranpedia). Opsional ?rawi=حفص untuk memfilter
-  async getReciters(req: Request, res: Response) {
-    try {
-      const rawi = req.query.rawi ? String(req.query.rawi) : undefined;
-      const data = await ReciterService.getPublicList(rawi);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("🔥 BACKEND ERROR getReciters:", error.message);
-      res.status(500).json({ success: false, message: error.message });
-    }
+  /**
+   * Helper: Membuat URL audio Per Ayat
+   */
+  ayahUrl(reciter: any, surahNomor: number, ayatNomor: number): string {
+    // Pola standar Quranpedia: {server}/{nomor_surah}/{nomor_ayat}.mp3
+    return `${reciter.server}/${surahNomor}/${ayatNomor}.mp3`;
   }
 };
