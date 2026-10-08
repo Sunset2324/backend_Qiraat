@@ -1,83 +1,146 @@
 import axios from 'axios';
 import NodeCache from 'node-cache';
 
-// Cache daftar qari selama 30 hari karena jarang berubah
-const cache = new NodeCache({ stdTTL: 30 * 24 * 60 * 60 });
+// Daftar reciter jarang berubah -> cache 7 hari
+const reciterCache = new NodeCache({ stdTTL: 7 * 24 * 60 * 60 });
+const CACHE_KEY = 'quranpedia_reciters_v1';
 
-// ✅ DEFINISI TIPE DATA (INTERFACE)
-export interface Reciter {
+const QURANPEDIA_RECITERS_URL = 'https://api.quranpedia.net/v1/reciters';
+
+/** Bentuk internal (lengkap, dipakai server untuk membangun URL audio) */
+export interface ReciterEntry {
   id: number;
-  nama: string;
-  namaLatin: string;
-  server: string;
-  classification: string;
-  perAyah: boolean;
+  reciter: string;            // nama qari (Arab)
+  name: string;               // nama lengkap entri dari Quranpedia (Arab)
+  rawi: string | null;        // mis. "حفص"
+  recitationType: string | null; // mis. "مرتل" / "مجود"
+  perAyah: boolean;           // true = file audio per ayat, false = per surah
+  surahs: number[];           // surah yang tersedia
+  server: string;             // base URL audio (selalu diakhiri "/")
+  timingUrl: string | null;
 }
 
+/** Bentuk publik (ringan, dikirim ke aplikasi; tanpa server & daftar surah) */
+export interface ReciterPublic {
+  id: number;
+  reciter: string;
+  name: string;
+  rawi: string | null;
+  recitationType: string | null;
+  perAyah: boolean;
+  surahCount: number;
+}
+
+const pad3 = (n: number) => String(n).padStart(3, '0');
+
+const parseSurahs = (raw: unknown): number[] => {
+  if (Array.isArray(raw)) return raw.map(Number).filter((n) => Number.isFinite(n));
+  if (typeof raw === 'string') {
+    return raw.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n));
+  }
+  return [];
+};
+
+// Nama entri Quranpedia berbentuk "مصحف حفص عن عاصم برواية <nama qari>".
+// Ambil bagian setelah "برواية" kalau ada, kalau tidak pakai nama penuh.
+const extractReciterName = (fullName: string): string => {
+  const marker = 'برواية';
+  const idx = fullName.indexOf(marker);
+  if (idx === -1) return fullName.trim();
+  const after = fullName.slice(idx + marker.length).trim();
+  return after || fullName.trim();
+};
+
+const isPerAyah = (classification: any): boolean => {
+  if (!classification) return false;
+  if (classification.id === 2) return true;
+  return /الآيات|الايات/.test(String(classification.name || ''));
+};
+
+const normalizeServer = (server: string) => (server.endsWith('/') ? server : `${server}/`);
+
 export const ReciterService = {
-  /**
-   * Mengambil daftar qari lengkap dari Quranpedia
-   * Opsional: filter berdasarkan nama rawi (misal: 'حفص')
-   */
-  async getPublicList(rawi?: string): Promise<Reciter[]> {
-    const cacheKey = rawi ? `reciters_${rawi}` : 'reciters_all';
-    
-    // ✅ Casting tipe data untuk cache agar TypeScript tahu ini adalah Array
-    const cached = cache.get<Reciter[]>(cacheKey);
+  /** Ambil semua reciter (sudah diratakan dari format "dikelompokkan per qari"). */
+  async getAll(): Promise<ReciterEntry[]> {
+    const cached = reciterCache.get<ReciterEntry[]>(CACHE_KEY);
     if (cached) return cached;
 
     try {
-      const { data } = await axios.get('https://api.quranpedia.net/v1/reciters');
-      const list = Array.isArray(data) ? data : [];
+      const { data } = await axios.get(QURANPEDIA_RECITERS_URL, { timeout: 20000 });
 
-      const mapped: Reciter[] = list.map((r: any) => ({
-        id: Number(r.id),
-        nama: r.name,
-        namaLatin: r.name_latin || r.name,
-        server: r.server,
-        classification: r.classification || '',
-        perAyah: r.classification ? r.classification.includes('آيات') : false,
-      }));
+      // Respons berupa array of array (dikelompokkan per qari) -> ratakan.
+      const flat: any[] = Array.isArray(data) ? data.flat(2) : [];
 
-      // Prioritaskan qari yang mendukung "per-ayat" agar muncul di urutan atas
-      mapped.sort((a, b) => (b.perAyah ? 1 : 0) - (a.perAyah ? 1 : 0));
+      const entries: ReciterEntry[] = [];
+      for (const item of flat) {
+        if (!item || typeof item !== 'object') continue;
+        if (typeof item.id !== 'number' || typeof item.server !== 'string' || !item.server) continue;
 
-      // Filter jika ada parameter rawi
-      const filtered = rawi 
-        ? mapped.filter((r) => r.nama.includes(rawi) || r.namaLatin.toLowerCase().includes(rawi.toLowerCase())) 
-        : mapped;
+        const name = String(item.name || '');
+        entries.push({
+          id: item.id,
+          reciter: extractReciterName(name),
+          name,
+          rawi: item.rawi?.name ?? null,
+          recitationType: item.recitation_type?.ar_name ?? null,
+          perAyah: isPerAyah(item.classification),
+          surahs: parseSurahs(item.surahs_list),
+          server: normalizeServer(item.server),
+          timingUrl: item.timing_url ?? null,
+        });
+      }
 
-      cache.set(cacheKey, filtered);
-      return filtered;
+      if (entries.length === 0) {
+        throw new Error('Struktur respons /reciters tidak dikenali atau kosong');
+      }
+
+      reciterCache.set(CACHE_KEY, entries);
+      return entries;
     } catch (error: any) {
-      console.error('Gagal mengambil data reciter:', error.message);
+      console.error('Gagal mengambil daftar reciter Quranpedia:', error.message);
       throw new Error('Gagal memuat daftar qari');
     }
   },
 
   /**
-   * Mengambil detail 1 qari berdasarkan ID
+   * Daftar ringan untuk aplikasi.
+   * - rawi  : filter berdasarkan nama rawi (mis. "حفص")
+   * - surah : hanya qari yang punya audio untuk surah ini (1-114)
    */
-  async getById(id: number): Promise<Reciter> {
-    const list = await this.getPublicList();
-    // ✅ Sekarang TypeScript tahu 'list' adalah Array, sehingga .find() valid
-    const reciter = list.find((r) => r.id === id);
-    
-    if (!reciter) throw new Error('Reciter tidak ditemukan');
-    return reciter;
+  async getPublicList(rawi?: string, surah?: number): Promise<ReciterPublic[]> {
+    const all = await ReciterService.getAll();
+    return all
+      .filter((r) => !rawi || r.rawi === rawi)
+      .filter((r) => !surah || r.surahs.includes(surah))
+      .map((r) => ({
+        id: r.id,
+        reciter: r.reciter,
+        name: r.name,
+        rawi: r.rawi,
+        recitationType: r.recitationType,
+        perAyah: r.perAyah,
+        surahCount: r.surahs.length,
+      }));
   },
 
-  /**
-   * Helper: Membuat URL audio Full Surah
-   */
-  fullSurahUrl(reciter: Reciter, surahNomor: number): string {
-    return `${reciter.server}/${surahNomor}.mp3`;
+  async getById(id: number): Promise<ReciterEntry | undefined> {
+    const all = await ReciterService.getAll();
+    return all.find((r) => r.id === id);
   },
 
-  /**
-   * Helper: Membuat URL audio Per Ayat
-   */
-  ayahUrl(reciter: Reciter, surahNomor: number, ayatNomor: number): string {
-    return `${reciter.server}/${surahNomor}/${ayatNomor}.mp3`;
-  }
+  // ---- Pembuat URL audio ----
+  // ASUMSI POLA NAMA FILE (belum bisa diverifikasi dari sandbox, tolong tes di browser):
+  //   per ayat  : {server}{SSS}{AAA}.mp3   contoh: .../001001.mp3
+  //   per surah : {server}{SSS}.mp3        contoh: .../001.mp3
+  // Kalau ternyata beda, cukup ubah dua fungsi di bawah ini.
+
+  ayahUrl(r: ReciterEntry, surah: number, ayah: number): string {
+    if (!r.perAyah || !r.surahs.includes(surah)) return '';
+    return `${r.server}${pad3(surah)}${pad3(ayah)}.mp3`;
+  },
+
+  fullSurahUrl(r: ReciterEntry, surah: number): string {
+    if (r.perAyah || !r.surahs.includes(surah)) return '';
+    return `${r.server}${pad3(surah)}.mp3`;
+  },
 };
