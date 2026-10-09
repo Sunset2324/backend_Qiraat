@@ -183,7 +183,7 @@ export const EquranService = {
           mushafAktif: mushafName,
           sumberArab: arab.source,
           sumberAudio: reciter ? 'quranpedia' : 'equran',
-          reciterAktif: reciter ? { id: reciter.id, nama: reciter.namaLatin || reciter.nama, perAyah: reciter.perAyah } : null,
+          reciterAktif: reciter ? { id: reciter.id, nama: reciter.name, perAyah: reciter.perAyah } : null,
         },
         audioFull: audioFullUrl,
         ayat: mergedAyat,
@@ -222,19 +222,62 @@ export const EquranService = {
   },
 
   // ============================================
-  // 5. JADWAL SHALAT
+  // 5. JADWAL SHALAT (Dengan Fallback API)
   // ============================================
   async getJadwalShalat(provinsi: string, kabkota: string, bulan: number, tahun: number = new Date().getFullYear()) {
     const cacheKey = `shalat_${provinsi}_${kabkota}_${bulan}_${tahun}`;
     const cached = shalatCache.get(cacheKey);
     if (cached) return cached;
 
-    const { data } = await axios.post(`${BASE_URL}/shalat`, { provinsi, kabkota, bulan, tahun });
-    if (data.code === 200) {
-      shalatCache.set(cacheKey, data.data);
-      return data.data;
+    try {
+      // 1. Coba EQuran.id dulu
+      const { data } = await axios.post(`${BASE_URL}/shalat`, { 
+        provinsi, 
+        kabkota, 
+        bulan, 
+        tahun 
+      }, { timeout: 10000 });
+
+      if (data.code === 200) {
+        shalatCache.set(cacheKey, data.data);
+        return data.data;
+      }
+      throw new Error('EQuran.id mengembalikan status bukan 200');
+    } catch (error: any) {
+      console.warn('⚠️ EQuran.id gagal, mencoba API fallback (aladhan.com)...');
+      
+      // 2. Fallback ke API Aladhan (gratis, stabil, default koordinat Jakarta)
+      try {
+        const latitude = -6.2088;
+        const longitude = 106.8456;
+        
+        const { data } = await axios.get(
+          `https://api.aladhan.com/v1/calendar/${tahun}/${bulan}?latitude=${latitude}&longitude=${longitude}&method=20`,
+          { timeout: 10000 }
+        );
+
+        if (data.code === 200) {
+          // Transformasi data Aladhan ke format yang konsisten dengan frontend kita
+          const transformedData = data.data.map((item: any) => ({
+            tanggal: item.date.gregorian.date, // Format: DD-MM-YYYY
+            subuh: item.timings.Fajr.split(' ')[0],
+            terbit: item.timings.Sunrise.split(' ')[0],
+            dzuhur: item.timings.Dhuhr.split(' ')[0],
+            ashar: item.timings.Asr.split(' ')[0],
+            maghrib: item.timings.Maghrib.split(' ')[0],
+            isya: item.timings.Isha.split(' ')[0],
+          }));
+
+          shalatCache.set(cacheKey, transformedData);
+          return transformedData;
+        }
+      } catch (fallbackError: any) {
+        console.error('❌ API Aladhan juga gagal:', fallbackError.message);
+      }
+
+      // Jika semua gagal, lempar error agar frontend tahu
+      throw new Error('Gagal mengambil jadwal shalat dari semua sumber');
     }
-    throw new Error('Gagal mengambil jadwal shalat');
   },
 
   // ============================================
