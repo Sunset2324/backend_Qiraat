@@ -77,6 +77,32 @@ export const QuranController = {
     }
   },
 
+  // 4b. Daftar provinsi untuk jadwal shalat
+  async getProvinsiShalat(_req: Request, res: Response) {
+    try {
+      const data = await EquranService.getProvinsiShalat();
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getProvinsiShalat:", error.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // 4c. Daftar kab/kota dalam satu provinsi
+  async getKabKotaShalat(req: Request, res: Response) {
+    try {
+      const { provinsi } = req.body;
+      if (!provinsi) {
+        return res.status(400).json({ success: false, message: 'Provinsi wajib diisi' });
+      }
+      const data = await EquranService.getKabKotaShalat(String(provinsi));
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getKabKotaShalat:", error.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
   // 5. Daftar Doa
   async getDaftarDoa(req: Request, res: Response) {
     try {

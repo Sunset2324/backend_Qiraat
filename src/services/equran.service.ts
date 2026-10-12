@@ -7,6 +7,9 @@ dotenv.config();
 
 const quranCache = new NodeCache({ stdTTL: 30 * 24 * 60 * 60 }); 
 const shalatCache = new NodeCache({ stdTTL: 24 * 60 * 60 }); 
+// Daftar provinsi & kab/kota hampir tidak pernah berubah
+const lokasiCache = new NodeCache({ stdTTL: 30 * 24 * 60 * 60 });
+
 
 const BASE_URL = process.env.EQURAN_API_BASE_URL || 'https://equran.id/api/v2';
 
@@ -246,29 +249,36 @@ export const EquranService = {
     } catch (error: any) {
       console.warn('⚠️ EQuran.id gagal, mencoba API fallback (aladhan.com)...');
       
-      // 2. Fallback ke API Aladhan (gratis, stabil, default koordinat Jakarta)
+      // 2. Fallback ke API Aladhan, memakai NAMA KOTA yang dipilih user
+      //    (sebelumnya selalu koordinat Jakarta, sehingga kota lain salah jamnya)
       try {
-        const latitude = -6.2088;
-        const longitude = 106.8456;
-        
+        const kota = kabkota.replace(/^(kota|kab\.?|kabupaten)\s+/i, '').trim();
         const { data } = await axios.get(
-          `https://api.aladhan.com/v1/calendar/${tahun}/${bulan}?latitude=${latitude}&longitude=${longitude}&method=20`,
-          { timeout: 10000 }
+          `https://api.aladhan.com/v1/calendarByCity/${tahun}/${bulan}`,
+          { params: { city: kota, country: 'Indonesia', method: 20 }, timeout: 10000 }
         );
 
-        if (data.code === 200) {
-          // Transformasi data Aladhan ke format yang konsisten dengan frontend kita
-          const transformedData = data.data.map((item: any) => ({
-            tanggal: item.date.gregorian.date, // Format: DD-MM-YYYY
-            subuh: item.timings.Fajr.split(' ')[0],
-            terbit: item.timings.Sunrise.split(' ')[0],
-            dzuhur: item.timings.Dhuhr.split(' ')[0],
-            ashar: item.timings.Asr.split(' ')[0],
-            maghrib: item.timings.Maghrib.split(' ')[0],
-            isya: item.timings.Isha.split(' ')[0],
-          }));
-
-          shalatCache.set(cacheKey, transformedData);
+        if (data.code === 200 && Array.isArray(data.data)) {
+          // Samakan bentuknya dengan EQuran.id: { provinsi, kabkota, jadwal: [...] }
+          const jadwal = data.data.map((item: any) => {
+            const [dd, mm, yyyy] = String(item.date.gregorian.date).split('-'); // DD-MM-YYYY
+            const jam = (v: string) => String(v).split(' ')[0];
+            return {
+              tanggal: parseInt(dd, 10),
+              tanggal_lengkap: `${yyyy}-${mm}-${dd}`,
+              imsak: jam(item.timings.Imsak),
+              subuh: jam(item.timings.Fajr),
+              terbit: jam(item.timings.Sunrise),
+              dhuha: jam(item.timings.Sunrise),
+              dzuhur: jam(item.timings.Dhuhr),
+              ashar: jam(item.timings.Asr),
+              maghrib: jam(item.timings.Maghrib),
+              isya: jam(item.timings.Isha),
+            };
+          });
+          const transformedData = { provinsi, kabkota, bulan, tahun, sumber: 'aladhan', jadwal };
+          // cache pendek: fallback tidak boleh menutupi EQuran.id terlalu lama
+          shalatCache.set(cacheKey, transformedData, 60 * 60);
           return transformedData;
         }
       } catch (fallbackError: any) {
@@ -278,6 +288,29 @@ export const EquranService = {
       // Jika semua gagal, lempar error agar frontend tahu
       throw new Error('Gagal mengambil jadwal shalat dari semua sumber');
     }
+  },
+
+  async getProvinsiShalat(): Promise<string[]> {
+    const cached = lokasiCache.get<string[]>('provinsi');
+    if (cached) return cached;
+    const { data } = await axios.get(`${BASE_URL}/shalat/provinsi`, { timeout: 10000 });
+    if (data.code === 200 && Array.isArray(data.data)) {
+      lokasiCache.set('provinsi', data.data);
+      return data.data;
+    }
+    throw new Error('Gagal mengambil daftar provinsi');
+  },
+
+  async getKabKotaShalat(provinsi: string): Promise<string[]> {
+    const key = `kabkota_${provinsi}`;
+    const cached = lokasiCache.get<string[]>(key);
+    if (cached) return cached;
+    const { data } = await axios.post(`${BASE_URL}/shalat/kabkota`, { provinsi }, { timeout: 10000 });
+    if (data.code === 200 && Array.isArray(data.data)) {
+      lokasiCache.set(key, data.data);
+      return data.data;
+    }
+    throw new Error('Gagal mengambil daftar kabupaten/kota');
   },
 
   // ============================================

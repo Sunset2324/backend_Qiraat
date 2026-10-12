@@ -11,6 +11,8 @@ router.get('/mushafs', QuranController.getMushafList);
 // ROUTE
 router.get('/reciters', QuranController.getReciters);
 
+router.get('/shalat/provinsi', QuranController.getProvinsiShalat);
+router.post('/shalat/kabkota', QuranController.getKabKotaShalat);
 router.post('/shalat', QuranController.getJadwalShalat);
 router.get('/doa', QuranController.getDaftarDoa);
 router.get('/doa/:id', QuranController.getDetailDoa);
