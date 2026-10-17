@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import quranRoutes from './routes/quran.routes';
+import { publicAdsRouter, adminRouter } from './routes/ads.routes';
 
 dotenv.config();
 
@@ -14,6 +15,8 @@ app.use(express.static('public'));
 
 // Routes
 app.use('/api', quranRoutes);
+app.use('/api', publicAdsRouter);
+app.use('/admin', adminRouter);
 
 app.get('/', (req, res) => {
   res.json({ message: '🚀 Backend Qiraat-Al-Qur-an is running on Vercel!' });
