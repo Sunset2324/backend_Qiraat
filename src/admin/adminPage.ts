@@ -47,6 +47,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .actions button{padding:6px 12px;font-size:13px}
 .hidden{display:none!important}
+.diag{display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:14px}
+.dot{width:10px;height:10px;border-radius:99px;margin-top:6px;flex:none;background:var(--mute)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
 .rule{font-size:13px;color:var(--mute);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-top:6px}
 </style>
 </head>
@@ -64,6 +66,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
   </section>
 
   <div id="app" class="hidden">
+    <section class="card">
+      <h2>Status koneksi <button type="button" id="diagBtn" style="margin-left:8px;padding:4px 10px;font-size:13px">Periksa ulang</button></h2>
+      <div id="diag" class="hint">Memeriksa...</div>
+    </section>
     <section class="card">
       <h2 id="formTitle">Tambah iklan</h2>
       <form id="f" novalidate>
@@ -155,8 +161,20 @@ button:disabled{opacity:.5;cursor:not-allowed}
     $("storeInfo").textContent="(penyimpanan: "+(cfg.store==="upstash"?"Upstash":"memori sementara - hanya uji lokal")+")";
     if(!cfg.cloudinary){$("mUpload").disabled=true;$("mUrl").checked=true;setMode("url");$("rule").textContent+=" Upload dinonaktifkan: Cloudinary belum dikonfigurasi."}
     else{$("mUpload").checked=true;setMode("upload")}
-    loadAds();
+    loadAds();diagnose();
   }
+
+  function diagnose(){
+    var box=$("diag");box.textContent="Memeriksa...";
+    api("/diagnose").then(function(j){
+      var d=j.data,html="";
+      [["Penyimpanan iklan (Upstash)",d.store],["Cloudinary (upload gambar)",d.cloudinary]].forEach(function(r){
+        html+='<div class="diag"><span class="dot '+(r[1].ok?"ok":"bad")+'"></span><div><strong>'+esc(r[0])+'</strong><br><span style="color:var(--mute)">'+esc(r[1].message)+'</span></div></div>';
+      });
+      box.innerHTML=html;
+    }).catch(function(e){box.textContent=e.message});
+  }
+  $("diagBtn").onclick=diagnose;
 
   // ---- Tema Thibbun
   function renderRes(q){
@@ -235,31 +253,32 @@ button:disabled{opacity:.5;cursor:not-allowed}
   };
   $("fx").oninput=refreshUpload;$("fy").oninput=refreshUpload;
 
+  var urlSeq=0;
   function checkUrl(){
-    var u=$("imgUrl").value.trim();img.url="";img.w=0;img.h=0;
+    var u=$("imgUrl").value.trim();img.url="";img.w=0;img.h=0;var my=++urlSeq;
     if(!u){showPrev(null);say($("imgMsg"),"");return}
     if(!/^https:\/\//i.test(u)){say($("imgMsg"),"URL gambar harus diawali https://","bad");return}
-    say($("imgMsg"),"Memeriksa gambar...");
-    var i=new Image();i.referrerPolicy="no-referrer";
-    i.onload=function(){
-      var w=i.naturalWidth,h=i.naturalHeight,r=cfg.rule;showPrev(i);
-      if(Math.abs(w/h-r.ratioW/r.ratioH)>0.03){say($("imgMsg"),"Rasio "+w+"x"+h+" bukan 16:9.","bad");return}
-      if(w<r.minWidth){say($("imgMsg"),"Lebar "+w+"px kurang dari "+r.minWidth+"px.","bad");return}
-      img.url=u;img.w=w;img.h=h;say($("imgMsg"),"Valid: "+w+"x"+h+"px (16:9).","ok");
-    };
-    i.onerror=function(){say($("imgMsg"),"Gambar tidak bisa dimuat dari URL itu.","bad")};i.src=u;
+    say($("imgMsg"),"Server sedang membaca gambar...");
+    api("/probe-image",{method:"POST",body:JSON.stringify({url:u})}).then(function(j){
+      if(my!==urlSeq)return;var d=j.data,r=cfg.rule;
+      // Pratinjau di browser (bisa gagal bila situs memblokir hotlink; server tetap bisa membacanya)
+      var i=new Image();i.referrerPolicy="no-referrer";
+      i.onload=function(){if(my===urlSeq)showPrev(i)};
+      i.onerror=function(){if(my===urlSeq)showPrev(null)};i.src=u;
+      if(!d.ratioOk){say($("imgMsg"),"Terbaca "+d.width+"x"+d.height+"px (bukan 16:9). Pakai gambar rasio 16:9.","bad");return}
+      if(!d.widthOk){say($("imgMsg"),"Terbaca "+d.width+"x"+d.height+"px; lebar minimal "+r.minWidth+"px.","bad");return}
+      img.url=u;img.w=d.width;img.h=d.height;say($("imgMsg"),"Valid: "+d.width+"x"+d.height+"px (16:9), format "+d.type+".","ok");
+    }).catch(function(e){if(my===urlSeq){showPrev(null);say($("imgMsg"),e.message,"bad")}});
   }
   $("imgUrl").addEventListener("change",checkUrl);$("imgUrl").addEventListener("blur",checkUrl);
 
+  function blobToDataUrl(blob){
+    return new Promise(function(res,rej){var f=new FileReader();f.onload=function(){res(f.result)};f.onerror=function(){rej(new Error("Gagal membaca file."))};f.readAsDataURL(blob)});
+  }
   function uploadCloudinary(blob){
-    return api("/cloudinary-sign",{method:"POST",body:"{}"}).then(function(j){
-      var s=j.data,fd=new FormData();
-      fd.append("file",blob,"iklan.jpg");fd.append("api_key",s.apiKey);fd.append("timestamp",s.timestamp);
-      fd.append("folder",s.folder);fd.append("signature",s.signature);
-      return fetch("https://api.cloudinary.com/v1_1/"+s.cloudName+"/image/upload",{method:"POST",body:fd})
-        .then(function(r){return r.json()}).then(function(u){
-          if(!u.secure_url)throw new Error((u.error&&u.error.message)||"Upload Cloudinary gagal.");return u.secure_url});
-    });
+    return blobToDataUrl(blob).then(function(d){
+      return api("/upload",{method:"POST",body:JSON.stringify({dataUrl:d})});
+    }).then(function(j){return j.data.url});
   }
 
   // ---- Simpan
