@@ -18,4 +18,6 @@ adminRouter.get('/api/ads', AdsController.adminList);
 adminRouter.post('/api/ads', AdsController.adminCreate);
 adminRouter.put('/api/ads/:id', AdsController.adminUpdate);
 adminRouter.delete('/api/ads/:id', AdsController.adminDelete);
-adminRouter.post('/api/cloudinary-sign', AdsController.cloudinarySign);
+adminRouter.get('/api/diagnose', AdsController.diagnose);
+adminRouter.post('/api/probe-image', AdsController.probeImage);
+adminRouter.post('/api/upload', AdsController.upload);

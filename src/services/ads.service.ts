@@ -25,8 +25,9 @@ const KEY = 'qiraat:ads:v1';
 
 // Vercel tidak punya disk permanen, jadi daftar iklan disimpan di Upstash Redis (REST).
 // Tanpa env UPSTASH_*, dipakai memori proses (hanya untuk uji lokal; hilang saat restart).
-const URL_ = process.env.UPSTASH_REDIS_REST_URL;
-const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const envClean = (v?: string) => (v ?? '').trim().replace(/^["']|["']$/g, '').trim();
+const URL_ = envClean(process.env.UPSTASH_REDIS_REST_URL);
+const TOKEN = envClean(process.env.UPSTASH_REDIS_REST_TOKEN);
 let memory: Ad[] = [];
 
 export const storeMode = (): 'upstash' | 'memory' => (URL_ && TOKEN ? 'upstash' : 'memory');
@@ -60,6 +61,22 @@ async function save(list: Ad[]): Promise<void> {
 }
 
 const sort = (l: Ad[]) => [...l].sort((a, b) => a.order - b.order || b.createdAt.localeCompare(a.createdAt));
+
+export async function pingStore(): Promise<{ ok: boolean; message: string }> {
+  if (storeMode() === 'memory') {
+    return { ok: false, message: 'UPSTASH_REDIS_REST_URL/TOKEN belum diatur: iklan hanya tersimpan sementara di memori server dan akan hilang.' };
+  }
+  try {
+    const r = await redis(['PING']);
+    return r === 'PONG' ? { ok: true, message: 'Upstash terhubung.' } : { ok: false, message: 'Upstash menjawab tidak terduga.' };
+  } catch (e: any) {
+    const st = e?.response?.status;
+    return {
+      ok: false,
+      message: st === 401 || st === 403 ? 'Upstash menolak token. Periksa UPSTASH_REDIS_REST_TOKEN.' : `Upstash gagal dijangkau: ${e?.message || e}`,
+    };
+  }
+}
 
 export const AdsService = {
   async listAll(): Promise<Ad[]> {
