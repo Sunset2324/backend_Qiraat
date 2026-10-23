@@ -28,6 +28,10 @@ export interface ReciterPublic {
   rawi: string | null;
   recitationType: string | null;
   perAyah: boolean;
+  /** true = qari ini punya audio per ayat (untuk "Ikuti Bacaan") */
+  hasAyah: boolean;
+  /** true = qari ini punya audio satu surah penuh */
+  hasFull: boolean;
   surahCount: number;
 }
 
@@ -63,14 +67,25 @@ const parseSurahs = (raw: unknown): number[] => {
   return [];
 };
 
-// Nama entri Quranpedia berbentuk "مصحف حفص عن عاصم برواية <nama qari>".
-// Ambil bagian setelah "برواية" kalau ada, kalau tidak pakai nama penuh.
+// Nama entri Quranpedia berbentuk:
+//   "مصحف <nama qari> برواية <rawi> عن <imam>"      -> nama qari = bagian SEBELUM "برواية"
+//   "المصحف المجود للقارئ <nama qari>" / "مجود للقارئ <nama qari>" / "المصحف المعلم للقارئ <nama qari>"
+const NAME_PREFIXES = [
+  /^المصحف\s+المجود\s+للقارئ\s+/,
+  /^المصحف\s+المعلم\s+للقارئ\s+/,
+  /^المصحف\s+المرتل\s+للقارئ\s+/,
+  /^(مجود|معلم|مرتل)\s+للقارئ\s+/,
+  /^المصحف\s+/,
+  /^مصحف\s+/,
+  /^(القارئ|الشيخ|شيخ)\s+/,
+];
 const extractReciterName = (fullName: string): string => {
-  const marker = 'برواية';
-  const idx = fullName.indexOf(marker);
-  if (idx === -1) return fullName.trim();
-  const after = fullName.slice(idx + marker.length).trim();
-  return after || fullName.trim();
+  let n = fullName.trim();
+  const idx = n.indexOf('برواية');
+  if (idx > 0) n = n.slice(0, idx).trim();
+  for (const re of NAME_PREFIXES) n = n.replace(re, '');
+  n = n.replace(/^(القارئ|الشيخ|شيخ)\s+/, '').trim();
+  return n || fullName.trim();
 };
 
 const isPerAyah = (classification: any): boolean => {
@@ -78,6 +93,9 @@ const isPerAyah = (classification: any): boolean => {
   if (classification.id === 2) return true;
   return /الآيات|الايات/.test(String(classification.name || ''));
 };
+
+export const reciterGroupKey = (r: { reciter: string; rawi: string | null; recitationType: string | null }) =>
+  `${normalizeArabic(r.reciter).replace(/\s+/g, '')}|${normalizeArabic(r.rawi)}|${normalizeArabic(r.recitationType)}`;
 
 const normalizeServer = (server: string) => (server.endsWith('/') ? server : `${server}/`);
 
@@ -131,18 +149,43 @@ export const ReciterService = {
    */
   async getPublicList(rawi?: string, surah?: number): Promise<ReciterPublic[]> {
     const all = await ReciterService.getAll();
-    return all
+    const filtered = all
       .filter((r) => !rawi || sameRawi(r.rawi, rawi))
-      .filter((r) => !surah || r.surahs.includes(surah))
-      .map((r) => ({
-        id: r.id,
-        reciter: r.reciter,
-        name: r.name,
-        rawi: r.rawi,
-        recitationType: r.recitationType,
-        perAyah: r.perAyah,
-        surahCount: r.surahs.length,
-      }));
+      .filter((r) => !surah || r.surahs.includes(surah));
+
+    // Satu qari sering punya 2-3 entri (per ayat, per surah, ...). Gabungkan jadi satu baris
+    // supaya daftar tidak membingungkan; entri per ayat dijadikan wakil.
+    const groups = new Map<string, ReciterEntry[]>();
+    for (const r of filtered) {
+      const k = reciterGroupKey(r);
+      const g = groups.get(k);
+      if (g) g.push(r);
+      else groups.set(k, [r]);
+    }
+
+    const out: ReciterPublic[] = [];
+    for (const list of groups.values()) {
+      const primary = list.find((r) => r.perAyah) ?? list[0];
+      out.push({
+        id: primary.id,
+        reciter: primary.reciter,
+        name: primary.name,
+        rawi: primary.rawi,
+        recitationType: primary.recitationType,
+        perAyah: primary.perAyah,
+        hasAyah: list.some((r) => r.perAyah),
+        hasFull: list.some((r) => !r.perAyah),
+        surahCount: Math.max(...list.map((r) => r.surahs.length)),
+      });
+    }
+    return out;
+  },
+
+  /** Entri lain milik qari yang sama (rawi & jenis bacaan sama), mis. versi per surah dari entri per ayat. */
+  async getSiblings(r: ReciterEntry): Promise<ReciterEntry[]> {
+    const all = await ReciterService.getAll();
+    const key = reciterGroupKey(r);
+    return all.filter((x) => x.id !== r.id && reciterGroupKey(x) === key);
   },
 
   async getById(id: number): Promise<ReciterEntry | undefined> {

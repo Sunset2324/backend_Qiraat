@@ -172,8 +172,14 @@ export const EquranService = {
         reciter = candidates.find((r) => r.perAyah) ?? candidates[0];
       }
 
+      // Satu qari bisa punya entri per ayat DAN per surah -> pakai keduanya
+      const siblings = reciter ? await ReciterService.getSiblings(reciter).catch(() => []) : [];
+      const pool = reciter ? [reciter, ...siblings] : [];
+      const ayahSrc = pool.find((r) => r.perAyah && r.surahs.includes(nomor));
+      const fullSrc = pool.find((r) => !r.perAyah && r.surahs.includes(nomor));
+
       if (reciter) {
-        audioFullUrl = ReciterService.fullSurahUrl(reciter, nomor);
+        audioFullUrl = fullSrc ? ReciterService.fullSurahUrl(fullSrc, nomor) : '';
       } else if (mushafRawi && !isHafsMushaf) {
         audioFullUrl = ''; // jangan putar audio Hafs di atas teks riwayat lain
       }
@@ -213,7 +219,7 @@ export const EquranService = {
           teksIndonesia: refs.map((r: any) => r.teksIndonesia).filter(Boolean).join(' ') || 'Terjemahan tidak tersedia',
           // Gunakan URL Quranpedia jika reciter ada, fallback ke EQuran
           audio: reciter 
-            ? ReciterService.ayahUrl(reciter, nomor, a.number) 
+            ? (ayahSrc ? ReciterService.ayahUrl(ayahSrc, nomor, a.number) : '') 
             : (!mushafRawi || isHafsMushaf) && refs[0]?.audio ? (refs[0].audio[qariId] || refs[0].audio['05'] || '') : '',
         };
       });
@@ -232,7 +238,7 @@ export const EquranService = {
           rawi: mushafRawi,
           ayatTidakLengkap: missingHafs,
           sumberAudio: reciter ? 'quranpedia' : (mushafRawi && !isHafsMushaf ? 'none' : 'equran'),
-          reciterAktif: reciter ? { id: reciter.id, nama: reciter.name, perAyah: reciter.perAyah } : null,
+          reciterAktif: reciter ? { id: reciter.id, nama: reciter.reciter, perAyah: !!ayahSrc } : null,
         },
         audioFull: audioFullUrl,
         ayat: mergedAyat,
