@@ -147,7 +147,11 @@ export const QuranController = {
   // Opsional: ?rawi=حفص (filter rawi) dan ?surah=2 (hanya qari yang punya surah itu)
   async getReciters(req: Request, res: Response) {
     try {
-      const rawi = req.query.rawi ? String(req.query.rawi) : undefined;
+      let rawi = req.query.rawi ? String(req.query.rawi) : undefined;
+      // ?mushafId=4 -> otomatis hanya qari yang membaca riwayat mushaf tersebut
+      if (!rawi && req.query.mushafId) {
+        rawi = (await EquranService.getMushafRawi(String(req.query.mushafId))) ?? undefined;
+      }
       const surahParam = req.query.surah ? parseInt(String(req.query.surah), 10) : NaN;
       const surah = Number.isInteger(surahParam) && surahParam >= 1 && surahParam <= 114 ? surahParam : undefined;
       const data = await ReciterService.getPublicList(rawi, surah);

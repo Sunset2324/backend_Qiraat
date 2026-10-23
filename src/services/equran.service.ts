@@ -1,7 +1,7 @@
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import dotenv from 'dotenv';
-import { ReciterService } from './Reciter.service';
+import { ReciterService, sameRawi, normalizeArabic, KNOWN_RAWI } from './Reciter.service';
 
 dotenv.config();
 
@@ -108,7 +108,14 @@ export const EquranService = {
       }
     }
 
-    // Fallback: AlQuran.cloud (Hafs)
+    return this.getArabicFallback(nomor);
+  },
+
+  /** Teks Hafs dari AlQuran.cloud (cadangan bila Quranpedia gagal / tidak lengkap). */
+  async getArabicFallback(nomor: number): Promise<ArabicResult> {
+    const cacheKey = `arab_fallback_${nomor}`;
+    const cached = quranCache.get<ArabicResult>(cacheKey);
+    if (cached) return cached;
     const res = await axios.get(`https://api.alquran.cloud/v1/surah/${nomor}/quran-uthmani`, { timeout: 15000 });
     if (res.data.code !== 200 || !res.data.data?.ayahs) {
       throw new Error('AlQuran.cloud gagal mengembalikan data Hafs');
@@ -125,6 +132,14 @@ export const EquranService = {
     return result;
   },
 
+
+  /** Rawi dari sebuah mushaf (null kalau tidak diketahui). */
+  async getMushafRawi(mushafId: string): Promise<string | null> {
+    if (!/^\d+$/.test(mushafId)) return 'حفص'; // fallback AlQuran.cloud = Hafs
+    const list = ((await this.getMushafList().catch(() => [])) as any[]) || [];
+    return list.find((m: any) => m.id === String(mushafId))?.rawi ?? null;
+  },
+
   // ============================================
   // 3b. DETAIL SURAH MERGED (Dengan Integrasi ReciterService)
   // ============================================
@@ -139,16 +154,45 @@ export const EquranService = {
       const eq = equranRes.data.data;
       let audioFullUrl = eq.audioFull?.[qariId] || eq.audioFull?.['05'] || '';
 
-      // 2. Cek apakah menggunakan Reciter Quranpedia
-      const reciter = reciterId ? await ReciterService.getById(reciterId).catch(() => undefined) : undefined;
-      
+      // 2. Qari harus membaca RIWAYAT yang sama dengan mushaf. Penomoran ayat tiap riwayat
+      //    berbeda (mis. Ar-Rahman: Hafs 78 ayat, Warsh 77 ayat), jadi audio qari riwayat lain
+      //    tidak akan sejajar dengan teks.
+      const mushafRawi = await this.getMushafRawi(mushafId);
+      const isHafsMushaf = sameRawi(mushafRawi, 'حفص');
+
+      let reciter = reciterId ? await ReciterService.getById(reciterId).catch(() => undefined) : undefined;
+      if (reciter && mushafRawi && !sameRawi(reciter.rawi, mushafRawi)) {
+        console.warn(`[MERGED] qari ${reciter.id} (${reciter.rawi}) tidak cocok dengan mushaf ${mushafId} (${mushafRawi}) -> diabaikan`);
+        reciter = undefined;
+      }
+      // Riwayat selain Hafs: pilih otomatis qari yang cocok (audio EQuran.id hanya untuk Hafs)
+      if (!reciter && mushafRawi && !isHafsMushaf) {
+        const all = await ReciterService.getAll().catch(() => []);
+        const candidates = all.filter((r) => sameRawi(r.rawi, mushafRawi) && r.surahs.includes(nomor));
+        reciter = candidates.find((r) => r.perAyah) ?? candidates[0];
+      }
+
       if (reciter) {
-        // Override URL audio dengan URL dari Quranpedia
         audioFullUrl = ReciterService.fullSurahUrl(reciter, nomor);
+      } else if (mushafRawi && !isHafsMushaf) {
+        audioFullUrl = ''; // jangan putar audio Hafs di atas teks riwayat lain
       }
 
       // 3. Teks Arab sesuai mushaf
-      const arab = await this.getArabicText(nomor, mushafId);
+      let arab = await this.getArabicText(nomor, mushafId);
+
+      // 3b. Pengaman kelengkapan ayat
+      const expected: number = eq.jumlahAyat ?? (eq.ayat || []).length;
+      if (isHafsMushaf && arab.source === 'quranpedia' && expected && arab.ayahs.length !== expected) {
+        // Jumlah ayat Hafs harus sama persis; kalau beda berarti data mushaf ini tidak lengkap
+        console.warn(`[MERGED] mushaf ${mushafId} surah ${nomor}: ${arab.ayahs.length} ayat, seharusnya ${expected} -> fallback AlQuran.cloud`);
+        arab = await this.getArabicFallback(nomor);
+      }
+      const covered = new Set<number>();
+      arab.ayahs.forEach((a) => a.hafsNumbers.forEach((n) => covered.add(n)));
+      const missingHafs: number[] = [];
+      for (let n = 1; n <= expected; n++) if (!covered.has(n)) missingHafs.push(n);
+      if (missingHafs.length) console.warn(`[MERGED] surah ${nomor} mushaf ${mushafId}: ayat Hafs tidak terwakili: ${missingHafs.join(',')}`);
 
       // 4. Nama mushaf untuk UI
       const mushafList = ((await this.getMushafList().catch(() => [])) as any[]) || [];
@@ -170,7 +214,7 @@ export const EquranService = {
           // Gunakan URL Quranpedia jika reciter ada, fallback ke EQuran
           audio: reciter 
             ? ReciterService.ayahUrl(reciter, nomor, a.number) 
-            : (refs[0]?.audio ? (refs[0].audio[qariId] || refs[0].audio['05'] || '') : ''),
+            : (!mushafRawi || isHafsMushaf) && refs[0]?.audio ? (refs[0].audio[qariId] || refs[0].audio['05'] || '') : '',
         };
       });
 
@@ -185,7 +229,9 @@ export const EquranService = {
           mushafId,
           mushafAktif: mushafName,
           sumberArab: arab.source,
-          sumberAudio: reciter ? 'quranpedia' : 'equran',
+          rawi: mushafRawi,
+          ayatTidakLengkap: missingHafs,
+          sumberAudio: reciter ? 'quranpedia' : (mushafRawi && !isHafsMushaf ? 'none' : 'equran'),
           reciterAktif: reciter ? { id: reciter.id, nama: reciter.name, perAyah: reciter.perAyah } : null,
         },
         audioFull: audioFullUrl,
@@ -201,7 +247,7 @@ export const EquranService = {
   // 4. DAFTAR MUSHAF (Disingkat untuk fokus ke Reciter)
   // ============================================
   async getMushafList() {
-    const cacheKey = 'quranpedia_mushafs_translated_v2';
+    const cacheKey = 'quranpedia_mushafs_translated_v3';
     const cached = quranCache.get(cacheKey);
     if (cached) return cached;
 
@@ -209,12 +255,27 @@ export const EquranService = {
       const { data } = await axios.get('https://api.quranpedia.net/v1/mushafs');
       let rawList = Array.isArray(data) ? data : (data?.data || data?.mushafs || []);
 
-      const mappedData = rawList.map((item: any) => ({
-        id: String(item.id || item.slug || item.kode || Math.random().toString(36)), 
-        name: item.name || item.nama || 'Mushaf Tidak Dikenal',
-        arabic: item.name || '',
-        description: item.description || item.deskripsi || "Mushaf Al-Qur'an dengan riwayat yang diakui."
-      }));
+      const textOf = (v: any): string | null =>
+        typeof v === 'string' ? v : v && typeof v === 'object' ? (v.name ?? v.ar_name ?? null) : null;
+
+      const mappedData = rawList.map((item: any) => {
+        const name = item.name || item.nama || 'Mushaf Tidak Dikenal';
+        // Rawi dari Quranpedia; kalau tidak ada, tebak dari nama mushaf ("مصحف ورش" -> ورش)
+        let rawi = textOf(item.rawi);
+        if (!rawi) {
+          const n = normalizeArabic(name);
+          rawi = KNOWN_RAWI.find((k) => n.includes(normalizeArabic(k))) ?? null;
+          if (!rawi && /التجويد/.test(name)) rawi = 'حفص'; // mushaf tajwid berwarna = Hafs
+        }
+        return {
+          id: String(item.id || item.slug || item.kode || Math.random().toString(36)),
+          name,
+          arabic: name,
+          rawi,
+          riwayah: textOf(item.riwayah),
+          description: item.description || item.deskripsi || "Mushaf Al-Qur'an dengan riwayat yang diakui.",
+        };
+      });
 
       quranCache.set(cacheKey, mappedData);
       return mappedData;

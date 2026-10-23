@@ -33,6 +33,28 @@ export interface ReciterPublic {
 
 const pad3 = (n: number) => String(n).padStart(3, '0');
 
+// ---- Rawi / qiraat ----
+// Buang harakat & samakan bentuk alif supaya "حفص" == "حَفْص", "أبو عمرو" == "ابو عمرو"
+export const normalizeArabic = (s: string | null | undefined): string =>
+  String(s ?? '')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** true kalau kedua rawi diketahui dan sama. */
+export const sameRawi = (a: string | null | undefined, b: string | null | undefined): boolean => {
+  const x = normalizeArabic(a);
+  const y = normalizeArabic(b);
+  return !!x && !!y && x === y;
+};
+
+/** Rawi yang dikenal (dipakai untuk menebak rawi dari nama mushaf bila Quranpedia tidak mengirimnya). */
+export const KNOWN_RAWI = [
+  'حفص', 'ورش', 'قالون', 'شعبة', 'الدوري', 'السوسي', 'البزي', 'قنبل',
+  'هشام', 'ابن ذكوان', 'خلف', 'خلاد', 'ابو الحارث',
+];
+
 const parseSurahs = (raw: unknown): number[] => {
   if (Array.isArray(raw)) return raw.map(Number).filter((n) => Number.isFinite(n));
   if (typeof raw === 'string') {
@@ -110,7 +132,7 @@ export const ReciterService = {
   async getPublicList(rawi?: string, surah?: number): Promise<ReciterPublic[]> {
     const all = await ReciterService.getAll();
     return all
-      .filter((r) => !rawi || r.rawi === rawi)
+      .filter((r) => !rawi || sameRawi(r.rawi, rawi))
       .filter((r) => !surah || r.surahs.includes(surah))
       .map((r) => ({
         id: r.id,
