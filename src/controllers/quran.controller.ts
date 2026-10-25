@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { EquranService } from '../services/equran.service';
 import { ReciterService } from '../services/Reciter.service';
+import { PageService } from '../services/page.service';
 
 export const QuranController = {
   
@@ -160,5 +161,36 @@ export const QuranController = {
       console.error("🔥 BACKEND ERROR getReciters:", error.message);
       res.status(500).json({ success: false, message: error.message });
     }
-  }
+  },
+  // 9. Ringkasan halaman sebuah mushaf (qiraat): jumlah halaman + juz + surah pertama tiap halaman
+  async getPagesSummary(req: Request, res: Response) {
+    try {
+      const mushafId = String(req.params.id);
+      if (!/^\d+$/.test(mushafId)) return res.status(400).json({ success: false, message: 'mushafId tidak valid' });
+      const data = await PageService.getSummary(mushafId);
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("🔥 BACKEND ERROR getPagesSummary:", error.message);
+      res.status(500).json({ success: false, message: 'Gagal memuat daftar halaman' });
+    }
+  },
+
+  // 10. Isi satu halaman mushaf (ayat dikelompokkan per surah)
+  async getPage(req: Request, res: Response) {
+    try {
+      const mushafId = String(req.params.id);
+      const page = parseInt(String(req.params.page), 10);
+      if (!/^\d+$/.test(mushafId) || !Number.isInteger(page) || page < 1) {
+        return res.status(400).json({ success: false, message: 'Mushaf atau nomor halaman tidak valid' });
+      }
+      const data = await PageService.getPage(mushafId, page);
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.json({ success: true, data });
+    } catch (error: any) {
+      const notFound = /tidak ditemukan/.test(error.message);
+      console.error("🔥 BACKEND ERROR getPage:", error.message);
+      res.status(notFound ? 404 : 500).json({ success: false, message: notFound ? error.message : 'Gagal memuat halaman' });
+    }
+  },
 };

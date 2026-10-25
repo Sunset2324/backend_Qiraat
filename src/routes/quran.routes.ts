@@ -7,6 +7,8 @@ router.get('/surat', QuranController.getAllSurah);
 router.get('/surat/:nomor', QuranController.getSurahDetail);
 router.get('/surat-merged/:nomor', QuranController.getSurahDetailMerged);
 router.get('/mushafs', QuranController.getMushafList);
+router.get('/mushafs/:id/pages', QuranController.getPagesSummary);
+router.get('/mushafs/:id/pages/:page', QuranController.getPage);
 
 // ROUTE
 router.get('/reciters', QuranController.getReciters);

@@ -148,10 +148,13 @@ export const EquranService = {
       console.log(`\n[MERGED] surah=${nomor} mushafId=${mushafId} reciterId=${reciterId ?? '-'}`);
 
       // 1. EQuran.id: terjemahan, latin, info surah
-      const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`, { timeout: 15000 });
-      if (equranRes.data.code !== 200) throw new Error('EQuran.id gagal');
-
-      const eq = equranRes.data.data;
+      let eq: any = quranCache.get<any>(`eq_surat_${nomor}`);
+      if (!eq) {
+        const equranRes = await axios.get(`${BASE_URL}/surat/${nomor}`, { timeout: 15000 });
+        if (equranRes.data.code !== 200) throw new Error('EQuran.id gagal');
+        eq = equranRes.data.data;
+        quranCache.set(`eq_surat_${nomor}`, eq);
+      }
       let audioFullUrl = eq.audioFull?.[qariId] || eq.audioFull?.['05'] || '';
 
       // 2. Qari harus membaca RIWAYAT yang sama dengan mushaf. Penomoran ayat tiap riwayat
