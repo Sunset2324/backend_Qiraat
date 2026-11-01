@@ -1,6 +1,20 @@
 import axios from 'axios';
 import { randomUUID } from 'crypto';
 
+// Masa tayang iklan (maksimal 7 hari). Kode: 24h = 24 jam, 3d, 5d, 1w = 1 minggu.
+export const DURATIONS = {
+  '24h': 24 * 3600 * 1000,
+  '3d': 3 * 24 * 3600 * 1000,
+  '5d': 5 * 24 * 3600 * 1000,
+  '1w': 7 * 24 * 3600 * 1000,
+} as const;
+export type AdDuration = keyof typeof DURATIONS;
+export const isDuration = (v: unknown): v is AdDuration => typeof v === 'string' && v in DURATIONS;
+
+/** Iklan lama (dibuat sebelum fitur ini) tidak punya expiresAt -> dianggap tanpa batas sampai diedit. */
+export const isExpired = (a: { expiresAt?: string | null }, now = Date.now()): boolean =>
+  !!a.expiresAt && Date.parse(a.expiresAt) <= now;
+
 export interface Ad {
   id: string;
   title: string;
@@ -15,19 +29,20 @@ export interface Ad {
   productUrl: string;
   active: boolean;
   order: number;
+  duration?: AdDuration;
+  expiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type AdInput = Omit<Ad, 'id' | 'createdAt' | 'updatedAt'>;
+export type AdInput = Omit<Ad, 'id' | 'createdAt' | 'updatedAt' | 'duration' | 'expiresAt'> & { duration?: AdDuration };
 
 const KEY = 'qiraat:ads:v1';
 
 // Vercel tidak punya disk permanen, jadi daftar iklan disimpan di Upstash Redis (REST).
 // Tanpa env UPSTASH_*, dipakai memori proses (hanya untuk uji lokal; hilang saat restart).
-const envClean = (v?: string) => (v ?? '').trim().replace(/^["']|["']$/g, '').trim();
-const URL_ = envClean(process.env.UPSTASH_REDIS_REST_URL);
-const TOKEN = envClean(process.env.UPSTASH_REDIS_REST_TOKEN);
+const URL_ = process.env.UPSTASH_REDIS_REST_URL;
+const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 let memory: Ad[] = [];
 
 export const storeMode = (): 'upstash' | 'memory' => (URL_ && TOKEN ? 'upstash' : 'memory');
@@ -62,32 +77,19 @@ async function save(list: Ad[]): Promise<void> {
 
 const sort = (l: Ad[]) => [...l].sort((a, b) => a.order - b.order || b.createdAt.localeCompare(a.createdAt));
 
-export async function pingStore(): Promise<{ ok: boolean; message: string }> {
-  if (storeMode() === 'memory') {
-    return { ok: false, message: 'UPSTASH_REDIS_REST_URL/TOKEN belum diatur: iklan hanya tersimpan sementara di memori server dan akan hilang.' };
-  }
-  try {
-    const r = await redis(['PING']);
-    return r === 'PONG' ? { ok: true, message: 'Upstash terhubung.' } : { ok: false, message: 'Upstash menjawab tidak terduga.' };
-  } catch (e: any) {
-    const st = e?.response?.status;
-    return {
-      ok: false,
-      message: st === 401 || st === 403 ? 'Upstash menolak token. Periksa UPSTASH_REDIS_REST_TOKEN.' : `Upstash gagal dijangkau: ${e?.message || e}`,
-    };
-  }
-}
-
 export const AdsService = {
   async listAll(): Promise<Ad[]> {
     return sort(await load());
   },
   async listActive(): Promise<Ad[]> {
-    return sort((await load()).filter((a) => a.active));
+    const now = Date.now();
+    return sort((await load()).filter((a) => a.active && !isExpired(a, now)));
   },
   async create(input: AdInput): Promise<Ad> {
     const now = new Date().toISOString();
-    const ad: Ad = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
+    if (!input.duration) throw new Error('Masa tayang wajib dipilih.');
+    const expiresAt = new Date(Date.now() + DURATIONS[input.duration]).toISOString();
+    const ad: Ad = { ...input, expiresAt, id: randomUUID(), createdAt: now, updatedAt: now };
     const list = await load();
     await save([...list, ad]);
     return ad;
@@ -96,7 +98,9 @@ export const AdsService = {
     const list = await load();
     const i = list.findIndex((a) => a.id === id);
     if (i < 0) return null;
-    const ad: Ad = { ...list[i], ...input, id, updatedAt: new Date().toISOString() };
+    // duration dikirim -> hitung ulang dari sekarang; tidak dikirim (mis. aktif/nonaktif) -> expiresAt tetap.
+    const expiresAt = input.duration ? new Date(Date.now() + DURATIONS[input.duration]).toISOString() : list[i].expiresAt;
+    const ad: Ad = { ...list[i], ...input, expiresAt, id, updatedAt: new Date().toISOString() };
     list[i] = ad;
     await save(list);
     return ad;

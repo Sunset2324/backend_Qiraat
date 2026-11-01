@@ -46,9 +46,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .badge.on{color:var(--ok);border-color:var(--ok)}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .actions button{padding:6px 12px;font-size:13px}
+.badge.exp{color:var(--bad);border-color:var(--bad)}
 .hidden{display:none!important}
-.diag{display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:14px}
-.dot{width:10px;height:10px;border-radius:99px;margin-top:6px;flex:none;background:var(--mute)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
 .rule{font-size:13px;color:var(--mute);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-top:6px}
 </style>
 </head>
@@ -66,10 +65,6 @@ button:disabled{opacity:.5;cursor:not-allowed}
   </section>
 
   <div id="app" class="hidden">
-    <section class="card">
-      <h2>Status koneksi <button type="button" id="diagBtn" style="margin-left:8px;padding:4px 10px;font-size:13px">Periksa ulang</button></h2>
-      <div id="diag" class="hint">Memeriksa...</div>
-    </section>
     <section class="card">
       <h2 id="formTitle">Tambah iklan</h2>
       <form id="f" novalidate>
@@ -109,6 +104,14 @@ button:disabled{opacity:.5;cursor:not-allowed}
         <div class="row">
           <div><label for="cta">Label tombol <span class="hint">(maks 24)</span></label><input id="cta" type="text" maxlength="24" value="Lihat Produk"></div>
           <div><label for="ord">Urutan <span class="hint">(kecil tampil dulu)</span></label><input id="ord" type="number" value="0"></div>
+        </div>
+        <label>Masa tayang <span class="hint">(maks 7 hari, dihitung dari saat disimpan)</span></label>
+        <div class="seg" id="durBox">
+          <label><input type="radio" name="dur" value="24h"> 24J <span class="hint">24 jam</span></label>
+          <label><input type="radio" name="dur" value="3d"> 3D <span class="hint">3 hari</span></label>
+          <label><input type="radio" name="dur" value="5d"> 5D <span class="hint">5 hari</span></label>
+          <label><input type="radio" name="dur" value="1w"> 1W <span class="hint">7 hari</span></label>
+          <label id="durKeepWrap" class="hidden"><input type="radio" name="dur" value="" id="durKeep"> Pertahankan <span class="hint" id="durKeepInfo"></span></label>
         </div>
         <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input id="act" type="checkbox" checked> Aktif (tampil di app)</label>
 
@@ -161,20 +164,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
     $("storeInfo").textContent="(penyimpanan: "+(cfg.store==="upstash"?"Upstash":"memori sementara - hanya uji lokal")+")";
     if(!cfg.cloudinary){$("mUpload").disabled=true;$("mUrl").checked=true;setMode("url");$("rule").textContent+=" Upload dinonaktifkan: Cloudinary belum dikonfigurasi."}
     else{$("mUpload").checked=true;setMode("upload")}
-    loadAds();diagnose();
+    loadAds();
   }
-
-  function diagnose(){
-    var box=$("diag");box.textContent="Memeriksa...";
-    api("/diagnose").then(function(j){
-      var d=j.data,html="";
-      [["Penyimpanan iklan (Upstash)",d.store],["Cloudinary (upload gambar)",d.cloudinary]].forEach(function(r){
-        html+='<div class="diag"><span class="dot '+(r[1].ok?"ok":"bad")+'"></span><div><strong>'+esc(r[0])+'</strong><br><span style="color:var(--mute)">'+esc(r[1].message)+'</span></div></div>';
-      });
-      box.innerHTML=html;
-    }).catch(function(e){box.textContent=e.message});
-  }
-  $("diagBtn").onclick=diagnose;
 
   // ---- Tema Thibbun
   function renderRes(q){
@@ -253,32 +244,42 @@ button:disabled{opacity:.5;cursor:not-allowed}
   };
   $("fx").oninput=refreshUpload;$("fy").oninput=refreshUpload;
 
-  var urlSeq=0;
   function checkUrl(){
-    var u=$("imgUrl").value.trim();img.url="";img.w=0;img.h=0;var my=++urlSeq;
+    var u=$("imgUrl").value.trim();img.url="";img.w=0;img.h=0;
     if(!u){showPrev(null);say($("imgMsg"),"");return}
     if(!/^https:\/\//i.test(u)){say($("imgMsg"),"URL gambar harus diawali https://","bad");return}
-    say($("imgMsg"),"Server sedang membaca gambar...");
-    api("/probe-image",{method:"POST",body:JSON.stringify({url:u})}).then(function(j){
-      if(my!==urlSeq)return;var d=j.data,r=cfg.rule;
-      // Pratinjau di browser (bisa gagal bila situs memblokir hotlink; server tetap bisa membacanya)
-      var i=new Image();i.referrerPolicy="no-referrer";
-      i.onload=function(){if(my===urlSeq)showPrev(i)};
-      i.onerror=function(){if(my===urlSeq)showPrev(null)};i.src=u;
-      if(!d.ratioOk){say($("imgMsg"),"Terbaca "+d.width+"x"+d.height+"px (bukan 16:9). Pakai gambar rasio 16:9.","bad");return}
-      if(!d.widthOk){say($("imgMsg"),"Terbaca "+d.width+"x"+d.height+"px; lebar minimal "+r.minWidth+"px.","bad");return}
-      img.url=u;img.w=d.width;img.h=d.height;say($("imgMsg"),"Valid: "+d.width+"x"+d.height+"px (16:9), format "+d.type+".","ok");
-    }).catch(function(e){if(my===urlSeq){showPrev(null);say($("imgMsg"),e.message,"bad")}});
+    say($("imgMsg"),"Memeriksa gambar...");
+    var i=new Image();i.referrerPolicy="no-referrer";
+    i.onload=function(){
+      var w=i.naturalWidth,h=i.naturalHeight,r=cfg.rule;showPrev(i);
+      if(Math.abs(w/h-r.ratioW/r.ratioH)>0.03){say($("imgMsg"),"Rasio "+w+"x"+h+" bukan 16:9.","bad");return}
+      if(w<r.minWidth){say($("imgMsg"),"Lebar "+w+"px kurang dari "+r.minWidth+"px.","bad");return}
+      img.url=u;img.w=w;img.h=h;say($("imgMsg"),"Valid: "+w+"x"+h+"px (16:9).","ok");
+    };
+    i.onerror=function(){say($("imgMsg"),"Gambar tidak bisa dimuat dari URL itu.","bad")};i.src=u;
   }
   $("imgUrl").addEventListener("change",checkUrl);$("imgUrl").addEventListener("blur",checkUrl);
 
-  function blobToDataUrl(blob){
-    return new Promise(function(res,rej){var f=new FileReader();f.onload=function(){res(f.result)};f.onerror=function(){rej(new Error("Gagal membaca file."))};f.readAsDataURL(blob)});
-  }
   function uploadCloudinary(blob){
-    return blobToDataUrl(blob).then(function(d){
-      return api("/upload",{method:"POST",body:JSON.stringify({dataUrl:d})});
-    }).then(function(j){return j.data.url});
+    return api("/cloudinary-sign",{method:"POST",body:"{}"}).then(function(j){
+      var s=j.data,fd=new FormData();
+      fd.append("file",blob,"iklan.jpg");fd.append("api_key",s.apiKey);fd.append("timestamp",s.timestamp);
+      fd.append("folder",s.folder);fd.append("signature",s.signature);
+      return fetch("https://api.cloudinary.com/v1_1/"+s.cloudName+"/image/upload",{method:"POST",body:fd})
+        .then(function(r){return r.json()}).then(function(u){
+          if(!u.secure_url)throw new Error((u.error&&u.error.message)||"Upload Cloudinary gagal.");return u.secure_url});
+    });
+  }
+
+  // ---- Masa tayang
+  function durVal(){var r=document.querySelector('input[name="dur"]:checked');return r?r.value:""}
+  function setDur(v){var r=document.querySelectorAll('input[name="dur"]');for(var i=0;i<r.length;i++)r[i].checked=(r[i].value===v)}
+  function remain(a){
+    if(!a.expiresAt)return{txt:"tanpa batas (iklan lama)",exp:false};
+    var ms=Date.parse(a.expiresAt)-Date.now();
+    if(ms<=0)return{txt:"kedaluwarsa",exp:true};
+    var h=Math.floor(ms/3600000),d=Math.floor(h/24);
+    return{txt:"sisa "+(d>=1?d+" hari "+(h%24)+" jam":h+" jam "+Math.floor((ms%3600000)/60000)+" menit"),exp:false};
   }
 
   // ---- Simpan
@@ -286,6 +287,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     if(!$("title").value.trim())return "Judul wajib diisi.";
     if(!sel.surah)return "Pilih ayat dari tema Thibbun Nabawi.";
     if(!/^https:\/\//i.test($("prod").value.trim()))return "Link produk harus diawali https://";
+    if(!durVal()&&!$("editId").value)return "Pilih masa tayang (24J / 3D / 5D / 1W).";
     if(mode()==="upload"&&!img.blob&&!img.url)return "Pilih gambar yang valid.";
     if(mode()==="url"&&!img.url)return "URL gambar belum valid.";
     return "";
@@ -298,6 +300,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
       var body={title:$("title").value.trim(),description:$("desc").value.trim(),ctaLabel:$("cta").value.trim(),
         tema:sel.tema,surah:sel.surah,ayat:sel.ayat,imageUrl:url,imageWidth:img.w,imageHeight:img.h,
         productUrl:$("prod").value.trim(),active:$("act").checked,order:+$("ord").value||0};
+      if(durVal())body.duration=durVal();
       var id=$("editId").value;
       return api(id?"/ads/"+id:"/ads",{method:id?"PUT":"POST",body:JSON.stringify(body)});
     }).then(function(){say($("msg"),"Tersimpan.","ok");resetForm(true);loadAds()})
@@ -305,7 +308,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     .then(function(){$("saveBtn").disabled=false});
   });
   function resetForm(keepMsg){
-    $("f").reset();$("editId").value="";$("formTitle").textContent="Tambah iklan";$("cta").value="Lihat Produk";$("act").checked=true;
+    $("f").reset();$("editId").value="";$("formTitle").textContent="Tambah iklan";$("cta").value="Lihat Produk";$("act").checked=true;setDur("");$("durKeepWrap").classList.add("hidden");
     sel={tema:"",surah:0,ayat:0};$("chosen").textContent="Belum ada ayat dipilih.";$("quote").classList.add("hidden");$("res").style.display="none";
     img={url:"",w:0,h:0,blob:null,src:null};showPrev(null);say($("imgMsg"),"");if(!keepMsg)say($("msg"),"");
     if(cfg.cloudinary){$("mUpload").checked=true;setMode("upload")}else{$("mUrl").checked=true;setMode("url")}
@@ -322,7 +325,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
     ads.forEach(function(a){
       var d=document.createElement("div");d.className="item";
       d.innerHTML='<div class="ratio"><img alt="" referrerpolicy="no-referrer" src="'+esc(a.imageUrl)+'"></div><div>'
-        +'<div><span class="badge '+(a.active?"on":"")+'">'+(a.active?"Aktif":"Nonaktif")+'</span><span class="badge">urutan '+esc(a.order)+'</span></div>'
+        +'<div><span class="badge '+(a.active?"on":"")+'">'+(a.active?"Aktif":"Nonaktif")+'</span><span class="badge">urutan '+esc(a.order)+'</span><span class="badge '+(remain(a).exp?"exp":"")+'">'+esc(remain(a).txt)+'</span></div>'
         +'<strong>'+esc(a.title)+'</strong><div class="hint">'+esc(a.tema)+' - QS '+a.surah+':'+a.ayat+'</div>'
         +'<div class="hint"><a href="'+esc(a.productUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(a.productUrl)+'</a></div>'
         +'<div class="actions"></div></div>';
@@ -342,6 +345,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
   function toggle(a){api("/ads/"+a.id,{method:"PUT",body:payload(a,{active:!a.active})}).then(loadAds).catch(function(e){alert(e.message)})}
   function edit(a){
     resetForm(false);$("editId").value=a.id;$("formTitle").textContent="Edit iklan";
+    var rm=remain(a);$("durKeepWrap").classList.remove("hidden");$("durKeepInfo").textContent="("+rm.txt+")";$("durKeep").checked=true;
     $("title").value=a.title;$("desc").value=a.description||"";$("prod").value=a.productUrl;$("cta").value=a.ctaLabel;$("ord").value=a.order;$("act").checked=a.active;
     pick(a.tema,a.surah,a.ayat);
     $("mUrl").checked=true;setMode("url");$("imgUrl").value=a.imageUrl;
