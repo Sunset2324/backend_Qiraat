@@ -22,8 +22,10 @@ app.use('/api/site/feedback', rateLimit('feedback', 5, 10 * 60 * 1000));
 app.use('/api/site/download', rateLimit('download', 30, 60 * 1000));
 app.use('/admin/api', rateLimit('admin', 120, 60 * 1000), adminLoginGuard);
 // Admin boleh mengirim gambar (data URL ~500KB); rute lain tetap dibatasi kecil.
-app.use('/admin', express.json({ limit: '1mb' }));
-app.use(express.json());
+// inflate:false = tolak badan permintaan terkompresi (Content-Encoding). App, landing, dan admin tidak mengirimnya,
+// dan ini menutup celah DoS body-parser pada versi < 2.4.0 (lihat advisory body-parser).
+app.use('/admin', express.json({ limit: '1mb', inflate: false }));
+app.use(express.json({ inflate: false }));
 app.use(express.static('public'));
 
 // Routes
@@ -52,6 +54,8 @@ if (!process.env.VERCEL) {
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err?.type === 'entity.too.large') return res.status(413).json({ success: false, message: 'Permintaan terlalu besar.' });
   if (err?.type === 'entity.parse.failed') return res.status(400).json({ success: false, message: 'Format permintaan tidak valid.' });
+  const st = Number(err?.status ?? err?.statusCode);
+  if (st >= 400 && st < 500) return res.status(st).json({ success: false, message: 'Permintaan tidak valid.' });
   console.error('UNHANDLED:', err?.message);
   res.status(500).json({ success: false, message: 'Terjadi kesalahan.' });
 });
