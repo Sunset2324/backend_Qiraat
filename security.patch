@@ -1,0 +1,73 @@
+diff -u -r a/src/admin/adminPage.ts b/src/admin/adminPage.ts
+--- a/src/admin/adminPage.ts	2026-11-03 09:11:49.676264360 +0000
++++ b/src/admin/adminPage.ts	2026-11-03 09:11:49.677234614 +0000
+@@ -142,7 +142,7 @@
+   var KEY="", cfg=null, ads=[];
+   var sel={tema:"",surah:0,ayat:0};
+   var img={url:"",w:0,h:0,blob:null,src:null}; // gambar terpilih
+-  function esc(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML}
++  function esc(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;")}
+   function say(el,t,cls){el.textContent=t||"";el.className="msg"+(cls?" "+cls:"")}
+ 
+   function api(path,opt){
+diff -u -r a/src/index.ts b/src/index.ts
+--- a/src/index.ts	2026-11-03 09:11:49.670181478 +0000
++++ b/src/index.ts	2026-11-03 09:11:49.677166908 +0000
+@@ -5,13 +5,22 @@
+ import { publicAdsRouter, adminRouter } from './routes/ads.routes';
+ import { siteRouter, siteAdminRouter } from './routes/site.routes';
+ import { notifArtPng } from './assets/notifArt';
++import { securityHeaders, corsOptions, rateLimit, adminLoginGuard, warnWeakAdminKey } from './middleware/security';
+ 
+ dotenv.config();
+ 
+ const app = express();
+ 
+ // Middleware
+-app.use(cors());
++app.disable('x-powered-by');
++app.use(securityHeaders);
++app.use(cors(corsOptions));
++warnWeakAdminKey();
++// Batas permintaan per IP: form publik dan admin. API baca untuk app sengaja TIDAK dibatasi per IP
++// (banyak pengguna seluler berbagi satu IP lewat CGNAT, pembatas per IP akan memblokir pengguna sah).
++app.use('/api/site/feedback', rateLimit('feedback', 5, 10 * 60 * 1000));
++app.use('/api/site/download', rateLimit('download', 30, 60 * 1000));
++app.use('/admin/api', rateLimit('admin', 120, 60 * 1000), adminLoginGuard);
+ // Admin boleh mengirim gambar (data URL ~500KB); rute lain tetap dibatasi kecil.
+ app.use('/admin', express.json({ limit: '1mb' }));
+ app.use(express.json());
+@@ -39,4 +48,12 @@
+   app.listen(PORT as number, () => console.log(`Backend Qiraat berjalan di port ${PORT}`));
+ }
+ 
++// Jangan bocorkan detail kesalahan internal ke klien
++app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
++  if (err?.type === 'entity.too.large') return res.status(413).json({ success: false, message: 'Permintaan terlalu besar.' });
++  if (err?.type === 'entity.parse.failed') return res.status(400).json({ success: false, message: 'Format permintaan tidak valid.' });
++  console.error('UNHANDLED:', err?.message);
++  res.status(500).json({ success: false, message: 'Terjadi kesalahan.' });
++});
++
+ export default app;
+diff -u -r a/src/routes/ads.routes.ts b/src/routes/ads.routes.ts
+--- a/src/routes/ads.routes.ts	2026-11-03 09:11:49.675186180 +0000
++++ b/src/routes/ads.routes.ts	2026-11-03 09:11:49.677210983 +0000
+@@ -2,6 +2,7 @@
+ import { AdsController } from '../controllers/ads.controller';
+ import { adminAuth } from '../middleware/adminAuth';
+ import { adminPageHtml } from '../admin/adminPage';
++import { sendAdminHtml } from '../middleware/security';
+ 
+ export const publicAdsRouter = Router();
+ publicAdsRouter.get('/ads', AdsController.publicList);
+@@ -9,8 +10,7 @@
+ export const adminRouter = Router();
+ // Halaman form (HTML saja, tanpa data); semua data lewat API yang butuh x-admin-key.
+ adminRouter.get('/', (_req, res) => {
+-  res.set('Cache-Control', 'no-store');
+-  res.type('html').send(adminPageHtml);
++  sendAdminHtml(res, adminPageHtml);
+ });
+ adminRouter.use('/api', adminAuth);
+ adminRouter.get('/api/config', AdsController.adminConfig);

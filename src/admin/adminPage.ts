@@ -142,7 +142,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
   var KEY="", cfg=null, ads=[];
   var sel={tema:"",surah:0,ayat:0};
   var img={url:"",w:0,h:0,blob:null,src:null}; // gambar terpilih
-  function esc(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML}
+  function esc(s){var d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;")}
   function say(el,t,cls){el.textContent=t||"";el.className="msg"+(cls?" "+cls:"")}
 
   function api(path,opt){

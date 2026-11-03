@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AdsController } from '../controllers/ads.controller';
 import { adminAuth } from '../middleware/adminAuth';
 import { adminPageHtml } from '../admin/adminPage';
+import { sendAdminHtml } from '../middleware/security';
 
 export const publicAdsRouter = Router();
 publicAdsRouter.get('/ads', AdsController.publicList);
@@ -9,8 +10,7 @@ publicAdsRouter.get('/ads', AdsController.publicList);
 export const adminRouter = Router();
 // Halaman form (HTML saja, tanpa data); semua data lewat API yang butuh x-admin-key.
 adminRouter.get('/', (_req, res) => {
-  res.set('Cache-Control', 'no-store');
-  res.type('html').send(adminPageHtml);
+  sendAdminHtml(res, adminPageHtml);
 });
 adminRouter.use('/api', adminAuth);
 adminRouter.get('/api/config', AdsController.adminConfig);
