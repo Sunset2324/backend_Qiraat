@@ -149,8 +149,12 @@ export const ReciterService = {
    */
   async getPublicList(rawi?: string, surah?: number): Promise<ReciterPublic[]> {
     const all = await ReciterService.getAll();
+    // Satu-satunya mushaf ad-Duri (KFGQPC) adalah riwayah 'an Abi 'Amr -> buang qari yang namanya
+    // menyebut "عن الكسائي" supaya dua riwayah ad-Duri tidak tercampur.
+    const isDuri = !!rawi && sameRawi(rawi, 'الدوري');
     const filtered = all
       .filter((r) => !rawi || sameRawi(r.rawi, rawi))
+      .filter((r) => !isDuri || !/الكسائي/.test(normalizeArabic(r.name)))
       .filter((r) => !surah || r.surahs.includes(surah));
 
     // Satu qari sering punya 2-3 entri (per ayat, per surah, ...). Gabungkan jadi satu baris

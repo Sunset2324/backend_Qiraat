@@ -2,6 +2,7 @@ import axios from 'axios';
 import NodeCache from 'node-cache';
 import dotenv from 'dotenv';
 import { ReciterService, sameRawi, normalizeArabic, KNOWN_RAWI } from './Reciter.service';
+import { matchMushaf, matchReciter } from './qiraat.service';
 
 dotenv.config();
 
@@ -77,7 +78,7 @@ export const EquranService = {
   // ============================================
   // 3a. TEKS ARAB (helper untuk merged)
   // ============================================
-  async getArabicText(nomor: number, mushafId: string): Promise<ArabicResult> {
+  async getArabicText(nomor: number, mushafId: string, allowHafsFallback = true): Promise<ArabicResult> {
     const cacheKey = `arab_${mushafId}_${nomor}`;
     const cached = quranCache.get<ArabicResult>(cacheKey);
     if (cached) return cached;
@@ -104,10 +105,12 @@ export const EquranService = {
           return result;
         }
       } catch (e: any) {
-        console.warn(`❌ Quranpedia gagal (${url}) → fallback ke AlQuran.cloud`);
+        console.warn(`❌ Quranpedia gagal (${url})`);
       }
     }
 
+    // Mushaf non-Hafs TIDAK boleh diganti diam-diam dengan teks Hafs (talfiq "على سبيل الرواية").
+    if (!allowHafsFallback) throw new Error('Teks riwayah ini sedang tidak tersedia');
     return this.getArabicFallback(nomor);
   },
 
@@ -162,16 +165,24 @@ export const EquranService = {
       //    tidak akan sejajar dengan teks.
       const mushafRawi = await this.getMushafRawi(mushafId);
       const isHafsMushaf = sameRawi(mushafRawi, 'حفص');
+      const mushafEntry = (((await this.getMushafList().catch(() => [])) as any[]) || []).find((m: any) => m.id === String(mushafId));
+      const riwayahId = mushafEntry ? matchMushaf(mushafEntry)?.riwayahId ?? null : (isHafsMushaf ? 'hafsh' : null);
+      /** Qari cocok bila rawi sama DAN namanya tidak menyebut riwayah lain. */
+      const reciterFits = (r: { name: string; rawi: string | null }) => {
+        if (!sameRawi(r.rawi, mushafRawi)) return false;
+        const m = matchReciter(r);
+        return !m || !riwayahId || m.riwayahId === riwayahId;
+      };
 
       let reciter = reciterId ? await ReciterService.getById(reciterId).catch(() => undefined) : undefined;
-      if (reciter && mushafRawi && !sameRawi(reciter.rawi, mushafRawi)) {
+      if (reciter && mushafRawi && !reciterFits(reciter)) {
         console.warn(`[MERGED] qari ${reciter.id} (${reciter.rawi}) tidak cocok dengan mushaf ${mushafId} (${mushafRawi}) -> diabaikan`);
         reciter = undefined;
       }
       // Riwayat selain Hafs: pilih otomatis qari yang cocok (audio EQuran.id hanya untuk Hafs)
       if (!reciter && mushafRawi && !isHafsMushaf) {
         const all = await ReciterService.getAll().catch(() => []);
-        const candidates = all.filter((r) => sameRawi(r.rawi, mushafRawi) && r.surahs.includes(nomor));
+        const candidates = all.filter((r) => reciterFits(r) && r.surahs.includes(nomor));
         reciter = candidates.find((r) => r.perAyah) ?? candidates[0];
       }
 
@@ -188,7 +199,7 @@ export const EquranService = {
       }
 
       // 3. Teks Arab sesuai mushaf
-      let arab = await this.getArabicText(nomor, mushafId);
+      let arab = await this.getArabicText(nomor, mushafId, !mushafRawi || isHafsMushaf);
 
       // 3b. Pengaman kelengkapan ayat
       const expected: number = eq.jumlahAyat ?? (eq.ayat || []).length;
@@ -218,7 +229,8 @@ export const EquranService = {
         return {
           nomor: a.number,
           teksArab: a.text,
-          teksLatin: refs.map((r: any) => r.teksLatin).filter(Boolean).join(' '),
+          // Transliterasi EQuran.id mengikuti bacaan Hafs -> dikosongkan untuk riwayah lain
+          teksLatin: !mushafRawi || isHafsMushaf ? refs.map((r: any) => r.teksLatin).filter(Boolean).join(' ') : '',
           teksIndonesia: refs.map((r: any) => r.teksIndonesia).filter(Boolean).join(' ') || 'Terjemahan tidak tersedia',
           // Gunakan URL Quranpedia jika reciter ada, fallback ke EQuran
           audio: reciter 
@@ -239,6 +251,7 @@ export const EquranService = {
           mushafAktif: mushafName,
           sumberArab: arab.source,
           rawi: mushafRawi,
+          riwayahId,
           ayatTidakLengkap: missingHafs,
           sumberAudio: reciter ? 'quranpedia' : (mushafRawi && !isHafsMushaf ? 'none' : 'equran'),
           reciterAktif: reciter ? { id: reciter.id, nama: reciter.reciter, perAyah: !!ayahSrc } : null,
