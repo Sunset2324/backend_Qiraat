@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import quranRoutes from './routes/quran.routes';
+import qiraatRoutes from './routes/qiraat.routes';
 import { publicAdsRouter, adminRouter } from './routes/ads.routes';
 import { siteRouter, siteAdminRouter } from './routes/site.routes';
 import { notifArtPng } from './assets/notifArt';
@@ -29,6 +30,7 @@ app.use(express.json({ inflate: false }));
 app.use(express.static('public'));
 
 // Routes
+app.use('/api/qiraat', qiraatRoutes);
 app.use('/api', quranRoutes);
 app.use('/api', publicAdsRouter);
 app.use('/api', siteRouter);
