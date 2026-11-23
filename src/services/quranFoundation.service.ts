@@ -9,19 +9,18 @@ import NodeCache from 'node-cache';
  *   QF_CLIENT_ID, QF_CLIENT_SECRET            (wajib, isi sendiri di dashboard hosting)
  *   QF_OAUTH_URL  (default https://oauth2.quran.foundation/oauth2/token)
  *   QF_API_BASE   (default https://apis.quran.foundation/content/api/v4)
- *   QF_SCOPE      (default qiraat.read)
+ *   QF_SCOPE      (default qiraat — scope induk; per 23 Nov 2026 server token menolak 'qiraat.read'
+ *                  untuk client kami walau tampil GRANTED, sedangkan 'qiraat' berhasil)
  *
  * Syarat pakai (Developer Terms, 20 Nov 2026): boleh di app beriklan dengan atribusi "Quran Foundation";
  * cache maks. 1 minggu; data mentah tidak boleh didistribusikan ulang (jangan dibundel ke APK).
  *
- * BELUM DIUJI: dokumentasi menyebut prefiks "/content/api/v4/qiraat/..." dan header x-auth-token + x-client-id,
- * tetapi path persis tiap endpoint tidak tertulis di halaman yang terbaca. Path di QF_PATHS adalah dugaan
- * dan perlu dicek sekali setelah akses disetujui; cukup ubah di sini.
+ * Path di QF_PATHS sesuai SDK resmi @quranjs/api 3.18.1; by_chapter terverifikasi dengan respons asli (23 Nov 2026).
  */
 
 const OAUTH_URL = process.env.QF_OAUTH_URL || 'https://oauth2.quran.foundation/oauth2/token';
 const API_BASE = process.env.QF_API_BASE || 'https://apis.quran.foundation/content/api/v4';
-const SCOPE = process.env.QF_SCOPE || 'qiraat.read';
+const SCOPE = process.env.QF_SCOPE || 'qiraat';
 
 export const QF_PATHS = {
   readers: '/qiraat/readers',
