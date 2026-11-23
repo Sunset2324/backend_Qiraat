@@ -39,6 +39,25 @@ export class QfNotConfiguredError extends Error {
   }
 }
 
+/** Kesalahan dari Quran Foundation dengan info yang AMAN dibagikan (tanpa token/secret). */
+export class QfUpstreamError extends Error {
+  constructor(
+    public stage: 'token' | 'api',
+    public status: number | null,
+    public upstream: string | null
+  ) {
+    super(`Quran Foundation ${stage} error ${status ?? '-'} ${upstream ?? ''}`.trim());
+    this.name = 'QfUpstreamError';
+  }
+}
+
+/** Ambil kode/jenis error dari respons QF (mis. "invalid_scope", "insufficient_scope", "invalid_client"). */
+const upstreamCode = (e: any): string | null => {
+  const d = e?.response?.data;
+  const v = d?.error ?? d?.type ?? d?.code ?? null;
+  return v ? String(v).slice(0, 60) : null;
+};
+
 export const isQfConfigured = () => !!(process.env.QF_CLIENT_ID && process.env.QF_CLIENT_SECRET);
 
 async function getToken(): Promise<string> {
@@ -46,15 +65,20 @@ async function getToken(): Promise<string> {
   if (token && Date.now() < token.exp) return token.value;
   const id = process.env.QF_CLIENT_ID as string;
   const secret = process.env.QF_CLIENT_SECRET as string;
-  const { data } = await axios.post(
-    OAUTH_URL,
-    new URLSearchParams({ grant_type: 'client_credentials', scope: SCOPE }).toString(),
-    {
-      auth: { username: id, password: secret },
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      timeout: 15000,
-    }
-  );
+  let data: any;
+  try {
+    ({ data } = await axios.post(
+      OAUTH_URL,
+      new URLSearchParams({ grant_type: 'client_credentials', scope: SCOPE }).toString(),
+      {
+        auth: { username: id, password: secret },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+        timeout: 15000,
+      }
+    ));
+  } catch (e: any) {
+    throw new QfUpstreamError('token', e?.response?.status ?? null, upstreamCode(e) ?? (e?.code ? String(e.code) : null));
+  }
   const ttl = Number(data?.expires_in) || 3600;
   token = { value: String(data.access_token), exp: Date.now() + (ttl - 60) * 1000 };
   return token.value;
@@ -70,14 +94,20 @@ async function qfGet<T = any>(path: string, params?: Record<string, string | num
       headers: { 'x-auth-token': await getToken(), 'x-client-id': process.env.QF_CLIENT_ID as string },
       timeout: 15000,
     });
+  const wrap = (e: any) =>
+    e instanceof QfUpstreamError ? e : new QfUpstreamError('api', e?.response?.status ?? null, upstreamCode(e) ?? (e?.code ? String(e.code) : null));
   let res;
   try {
     res = await doGet();
   } catch (e: any) {
     if (e?.response?.status === 401) {
       token = null; // token kedaluwarsa lebih awal -> minta ulang sekali
-      res = await doGet();
-    } else throw e;
+      try {
+        res = await doGet();
+      } catch (e2: any) {
+        throw wrap(e2);
+      }
+    } else throw wrap(e);
   }
   cache.set(key, res.data);
   return res.data as T;
