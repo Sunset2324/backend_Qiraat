@@ -5,6 +5,7 @@ import { QuranFoundationService, QfNotConfiguredError, QfUpstreamError } from '.
 import { ReciterService } from '../services/Reciter.service';
 import { EquranService } from '../services/equran.service';
 import { RIWAYAT } from '../data/qiraatStandard';
+import { getVariants } from '../services/qiraatVariant.service';
 
 const surahOf = (v: unknown) => {
   const n = parseInt(String(v ?? ''), 10);
@@ -173,12 +174,24 @@ export const QiraatController = {
     if (!surah) return res.status(400).json({ success: false, message: 'Nomor surah harus 1-114' });
     const lang = req.query.lang === 'ar' ? 'ar' : 'en';
     try {
-      const data = Number.isFinite(ayah) && ayah > 0
-        ? await QuranFoundationService.matrixByVerse(surah, ayah, lang)
-        : await QuranFoundationService.matrixByChapter(surah, 1, lang);
+      const hasAyah = Number.isFinite(ayah) && ayah > 0;
+      // ?raw=1 -> respons asli QF (untuk pengecekan); default -> dipetakan ke id imam/riwayah aplikasi
+      if (req.query.raw === '1') {
+        const data = hasAyah
+          ? await QuranFoundationService.matrixByVerse(surah, ayah, lang)
+          : await QuranFoundationService.matrixByChapter(surah, 1, lang);
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.json({ success: true, data, atribusi: 'Quran Foundation' });
+      }
+      const { junctures, unmapped } = await getVariants(surah, hasAyah ? ayah : null, lang);
       // Syarat Quran Foundation: atribusi wajib, cache klien jangan lebih dari 1 minggu
       res.set('Cache-Control', 'public, max-age=86400');
-      res.json({ success: true, data, atribusi: 'Quran Foundation' });
+      res.json({
+        success: true,
+        data: { surah, ayah: hasAyah ? ayah : null, junctures, unmapped },
+        atribusi: 'Quran Foundation',
+        catatan: 'Perbedaan per kata (farsy). Perbedaan cara baca umum (usul) tidak selalu tercakup.',
+      });
     } catch (e: any) {
       if (e instanceof QfNotConfiguredError) {
         return res.status(503).json({ success: false, code: 'QF_NOT_CONFIGURED', message: 'Data variant qiraat belum diaktifkan di server.' });
