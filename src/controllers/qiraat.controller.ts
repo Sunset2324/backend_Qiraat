@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { getStandard, getRiwayah, matchMushaf, matchReciter } from '../services/qiraat.service';
 import { Mp3QuranService } from '../services/mp3quran.service';
-import { QuranFoundationService, QfNotConfiguredError } from '../services/quranFoundation.service';
+import { QuranFoundationService, QfNotConfiguredError, QfUpstreamError } from '../services/quranFoundation.service';
 import { ReciterService } from '../services/Reciter.service';
 import { EquranService } from '../services/equran.service';
 import { RIWAYAT } from '../data/qiraatStandard';
@@ -183,11 +183,20 @@ export const QiraatController = {
       if (e instanceof QfNotConfiguredError) {
         return res.status(503).json({ success: false, code: 'QF_NOT_CONFIGURED', message: 'Data variant qiraat belum diaktifkan di server.' });
       }
-      const st = e?.response?.status;
-      res.status(st === 403 ? 503 : 502).json({
+      // Diagnostik aman: tahap (token/api), status HTTP, dan kode error QF — tanpa token atau secret.
+      const d = e instanceof QfUpstreamError ? { tahap: e.stage, status: e.status, kode: e.upstream } : { tahap: 'lain', status: null, kode: null };
+      console.error('[QF]', JSON.stringify(d));
+      const scopeIssue = d.status === 403 || /scope/i.test(String(d.kode ?? ''));
+      const clientIssue = d.tahap === 'token' && (d.status === 401 || /client/i.test(String(d.kode ?? '')));
+      return res.status(scopeIssue || clientIssue ? 503 : 502).json({
         success: false,
-        code: st === 403 ? 'QF_SCOPE' : 'QF_ERROR',
-        message: st === 403 ? 'Akses qiraat.read belum disetujui Quran Foundation.' : 'Gagal memuat data variant.',
+        code: scopeIssue ? 'QF_SCOPE' : clientIssue ? 'QF_CLIENT' : 'QF_ERROR',
+        message: scopeIssue
+          ? 'Akses qiraat.read belum disetujui Quran Foundation.'
+          : clientIssue
+          ? 'Client ID/Secret ditolak Quran Foundation (cek kredensial production, bukan prelive).'
+          : 'Gagal memuat data variant.',
+        diagnostik: d,
       });
     }
   },
